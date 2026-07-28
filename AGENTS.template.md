@@ -72,3 +72,30 @@ idf.py -p <TARGET_PORT> flash monitor
    - `driver/gpio.h`, `driver/spi_master.h`, `driver/i2c_master.h` for peripherals.
 3. **PSRAM Support**: Ensure `CONFIG_SPIRAM=y` is maintained in `sdkconfig.defaults` when allocating framebuffers or large buffers.
 4. **Header Cleanliness**: Keep driver inclusions modular in component headers.
+
+## Git Collaboration Workflow
+Khi làm việc với dự án, luôn tuân thủ quy trình Git theo 4 bước tiêu chuẩn (**Pull -> Edit -> Commit -> Push**):
+
+1. **Pull (Cập nhật code mới nhất từ remote):**
+   ```bash
+   git pull origin main --rebase
+   ```
+   - Luôn kéo mã nguồn mới nhất về trước khi bắt đầu chỉnh sửa để hạn chế xung đột (conflict).
+
+2. **Edit (Thực hiện chỉnh sửa & kiểm định):**
+   - Thực hiện thay đổi file/tính năng cần thiết.
+   - Kiểm tra build thành công (ví dụ bằng `build_and_flash.bat build`) trước khi chuyển sang bước commit.
+
+3. **Commit (Lưu thay đổi tại local):**
+   ```bash
+   git add .
+   git commit -m "<type>: <mô tả ngắn gọn thay đổi>"
+   ```
+   - Đặt thông điệp commit rõ ràng (ví dụ: `feat:`, `fix:`, `docs:`, `refactor:`).
+
+4. **Push (Đẩy thay đổi lên remote repository):**
+   ```bash
+   git push origin main
+   ```
+   - Nếu bị reject do có commit mới trên remote, chạy `git pull --rebase origin main`, xử lý conflict (nếu có) rồi mới push lại.
+
