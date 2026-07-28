@@ -14,7 +14,8 @@ Mô-đun vi điều khiển **ESP32-S3** phụ trách đọc tín hiệu từ **
 | **Chân PWM (LEDC)** | **GPIO 4** (Tần số PWM: `5 kHz`, độ phân giải `13-bit`, tín hiệu cảnh báo/fading) |
 | **Bộ nhớ NVS** | Đã cấu hình NVS Flash để lưu trữ tham số cấu hình & trạng thái cảm biến |
 | **MQTT Telemetry** | Gửi thông số khoảng cách xe (`distance_cm`) lên Topic `v1/devices/me/telemetry` trên CoreIoT |
-| **Cổng Nạp Mặc định** | **`COM8`** |
+| **Device Access Token** | `SENSOR_NODE_DEVICE_TOKEN` (Cấu hình tại file `config/keys.json` local) |
+| **Cổng Nạp Mặc định** | **`COM3`** |
 
 ---
 

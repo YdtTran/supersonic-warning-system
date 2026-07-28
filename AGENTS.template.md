@@ -108,14 +108,16 @@ Quy trình kiểm thử kết nối MQTT tới đám mây **CoreIoT (ThingsBoard
 - **File template mẫu trên Git**: `config/keys.template.json`
 - **Python Conda Executable**: `<MQTT_PYTHON_PATH, e.g. D:\miniconda\envs\mqtt-coreiot\python.exe>`
 - **Broker Host**: `app.coreiot.io` (Port `1883`)
-- **Device Access Key (Token)**: Tự động đọc từ `config/keys.json` *(Sử dụng cho `waveshare-screen` để lấy dữ liệu từ server CoreIoT và hiển thị lên màn hình)*
+- **Device Access Keys (Tokens)**:
+  - **`SENSOR_NODE_DEVICE_TOKEN`**: `<SENSOR_NODE_ACCESS_TOKEN>` *(Sử dụng cho `sensor-node` gửi telemetry cảm biến JSN-SR04T)*
+  - **`WAVESHARE_SCREEN_DEVICE_TOKEN`**: `<WAVESHARE_SCREEN_ACCESS_TOKEN>` *(Sử dụng cho `waveshare-screen` lấy dữ liệu qua CoreIoT Rule-Chain hiển thị lên màn hình)*
 - **Telemetry Topic**: `v1/devices/me/telemetry`
 - **Script Test**: `tools/test_mqtt_coreiot.py`
 
 > **Quy tắc bảo mật & Quản lý Key cho AI Agent:**
 > - Agent **tuyệt đối không** hardcode secret key vào mã nguồn Python/C++ hoặc file markdown tracked trên Git.
 > - Agent sẽ tự động đọc key từ `config/keys.json` local khi chạy script test hoặc cấu hình kết nối.
-> - Khi chuyển sang máy mới: Chạy `copy config/keys.template.json config/keys.json` và điền Access Key của máy đó vào `config/keys.json`.
+> - Khi chuyển sang máy mới: Chạy `copy config/keys.template.json config/keys.json` và điền Access Key tương ứng vào `config/keys.json`.
 
 ### Các lệnh kiểm thử MQTT:
 ```powershell

@@ -41,7 +41,11 @@ def parse_args():
     cfg = load_config_keys()
     default_broker = cfg.get("COREIOT_BROKER", DEFAULT_BROKER)
     default_port = cfg.get("COREIOT_PORT", DEFAULT_PORT)
-    default_token = os.environ.get("COREIOT_TOKEN", "") or cfg.get("COREIOT_DEVICE_TOKEN", "")
+    default_token = (
+        os.environ.get("COREIOT_TOKEN", "")
+        or cfg.get("SENSOR_NODE_DEVICE_TOKEN", "")
+        or cfg.get("COREIOT_DEVICE_TOKEN", "")
+    )
     default_topic = cfg.get("COREIOT_TELEMETRY_TOPIC", DEFAULT_TOPIC)
 
     parser = argparse.ArgumentParser(description="CoreIoT (ThingsBoard) MQTT Test Client")
