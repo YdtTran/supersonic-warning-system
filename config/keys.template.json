@@ -1,0 +1,6 @@
+{
+  "COREIOT_BROKER": "app.coreiot.io",
+  "COREIOT_PORT": 1883,
+  "COREIOT_DEVICE_TOKEN": "<YOUR_COREIOT_DEVICE_TOKEN>",
+  "COREIOT_TELEMETRY_TOPIC": "v1/devices/me/telemetry"
+}

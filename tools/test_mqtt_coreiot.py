@@ -24,12 +24,31 @@ DEFAULT_PORT = 1883
 DEFAULT_TOPIC = "v1/devices/me/telemetry"
 
 
+def load_config_keys():
+    """Tự động đọc file config/keys.json ( local config được gitignore )"""
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config_path = os.path.join(base_dir, "config", "keys.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[WARNING] Không thể đọc file config/keys.json: {e}")
+    return {}
+
+
 def parse_args():
+    cfg = load_config_keys()
+    default_broker = cfg.get("COREIOT_BROKER", DEFAULT_BROKER)
+    default_port = cfg.get("COREIOT_PORT", DEFAULT_PORT)
+    default_token = os.environ.get("COREIOT_TOKEN", "") or cfg.get("COREIOT_DEVICE_TOKEN", "")
+    default_topic = cfg.get("COREIOT_TELEMETRY_TOPIC", DEFAULT_TOPIC)
+
     parser = argparse.ArgumentParser(description="CoreIoT (ThingsBoard) MQTT Test Client")
-    parser.add_argument("--broker", default=DEFAULT_BROKER, help="MQTT broker host (default: app.coreiot.io)")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="MQTT broker port (default: 1883)")
-    parser.add_argument("--token", default=os.environ.get("COREIOT_TOKEN", ""), help="Device access token / key (or set COREIOT_TOKEN env var)")
-    parser.add_argument("--topic", default=DEFAULT_TOPIC, help="Telemetry topic (default: v1/devices/me/telemetry)")
+    parser.add_argument("--broker", default=default_broker, help="MQTT broker host (default: app.coreiot.io)")
+    parser.add_argument("--port", type=int, default=default_port, help="MQTT broker port (default: 1883)")
+    parser.add_argument("--token", default=default_token, help="Device access token / key (or set COREIOT_TOKEN env var / config/keys.json)")
+    parser.add_argument("--topic", default=default_topic, help="Telemetry topic (default: v1/devices/me/telemetry)")
     parser.add_argument("--distance", type=float, default=None, help="Fixed distance value in cm (default: random 10-200cm)")
     parser.add_argument("--loop", action="store_true", help="Send data continuously in a loop")
     parser.add_argument("--interval", type=float, default=2.0, help="Publish interval in seconds for loop mode (default: 2.0s)")
@@ -51,10 +70,11 @@ def main():
     args = parse_args()
     token = args.token
 
-    if not token:
-        print("[ERROR] Chưa cung cấp Device Access Token!")
-        print("Vui lòng truyền token qua tham số '--token <ACCESS_TOKEN>' hoặc thiết lập biến môi trường COREIOT_TOKEN.")
-        print("Xem thêm token cá nhân trong file cấu hình local AGENTS.md (được gitignore).")
+    if not token or token.startswith("<"):
+        print("[ERROR] Chưa cung cấp Device Access Token hợp lệ!")
+        print("Vui lòng tạo/cập nhật file 'config/keys.json' từ template 'config/keys.template.json':")
+        print("   copy config/keys.template.json config/keys.json")
+        print("hoặc truyền token qua tham số '--token <ACCESS_TOKEN>'.")
         sys.exit(1)
 
     userdata = {"broker": args.broker, "port": args.port}

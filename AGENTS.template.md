@@ -2,8 +2,9 @@
 
 > **Hướng dẫn cấu hình cho thiết bị/máy mới (Cross-Device Setup):**
 > 1. Khi chuyển project sang máy mới, hãy sao chép (copy) file này thành `AGENTS.md` ở thư mục gốc của repository.
-> 2. Điền/Sửa các đường dẫn trong dấu `<...>` bên dưới cho khớp với cấu hình ESP-IDF và cổng COM kết nối phần cứng trên máy đó.
-> 3. Cả Agent và Người dùng sẽ sử dụng thông tin trong `AGENTS.md` đã tinh chỉnh để thực thi các lệnh build, flash và monitor.
+> 2. Tạo file cấu hình key local: `copy config/keys.template.json config/keys.json` và điền Device Access Token cá nhân vào `config/keys.json`.
+> 3. Điền/Sửa các đường dẫn trong dấu `<...>` bên dưới cho khớp với cấu hình ESP-IDF và cổng COM kết nối phần cứng trên máy đó.
+> 4. Cả Agent và Người dùng sẽ đọc các secret keys từ file `config/keys.json` (được `.gitignore` bảo mật, không bao giờ push lên Git).
 
 ## Overview
 This repository contains two independent ESP-IDF projects targeted for **ESP32-S3** microcontrollers:
@@ -16,6 +17,7 @@ This repository contains two independent ESP-IDF projects targeted for **ESP32-S
 - **IDF Path**: `<IDF_PATH, e.g. E:\esp\v6.0.2\esp-idf>`
 - **IDF Tools Path**: `<IDF_TOOLS_PATH, e.g. C:\Espressif\tools>`
 - **Python Virtual Environment**: `<PYTHON_VENV_PATH, e.g. C:\Espressif\tools\python\v6.0.2\venv>`
+- **MQTT Test Conda Environment**: `<MQTT_CONDA_VENV, e.g. D:\miniconda\envs\mqtt-coreiot>`
 - **Shell Profile**: `<SHELL_PROFILE_PATH, e.g. C:\Espressif\tools\Microsoft.v6.0.2.PowerShell_profile.ps1>`
 - **Build Generator**: `CMake` with `Ninja` (managed directly or via `idf.py`)
 
@@ -102,22 +104,28 @@ Khi làm việc với dự án, luôn tuân thủ quy trình Git theo 4 bước 
 ## MQTT Testing & CoreIoT Integration
 Quy trình kiểm thử kết nối MQTT tới đám mây **CoreIoT (ThingsBoard)** sử dụng môi trường Conda `mqtt-coreiot`:
 
+- **File cấu hình Key local (Gitignored)**: `config/keys.json`
+- **File template mẫu trên Git**: `config/keys.template.json`
 - **Python Conda Executable**: `<MQTT_PYTHON_PATH, e.g. D:\miniconda\envs\mqtt-coreiot\python.exe>`
 - **Broker Host**: `app.coreiot.io` (Port `1883`)
-- **Device Access Key (Token)**: `<COREIOT_DEVICE_TOKEN>` *(Sử dụng cho `waveshare-screen` để lấy dữ liệu từ server CoreIoT và hiển thị lên màn hình)*
+- **Device Access Key (Token)**: Tự động đọc từ `config/keys.json` *(Sử dụng cho `waveshare-screen` để lấy dữ liệu từ server CoreIoT và hiển thị lên màn hình)*
 - **Telemetry Topic**: `v1/devices/me/telemetry`
 - **Script Test**: `tools/test_mqtt_coreiot.py`
 
+> **Quy tắc bảo mật & Quản lý Key cho AI Agent:**
+> - Agent **tuyệt đối không** hardcode secret key vào mã nguồn Python/C++ hoặc file markdown tracked trên Git.
+> - Agent sẽ tự động đọc key từ `config/keys.json` local khi chạy script test hoặc cấu hình kết nối.
+> - Khi chuyển sang máy mới: Chạy `copy config/keys.template.json config/keys.json` và điền Access Key của máy đó vào `config/keys.json`.
+
 ### Các lệnh kiểm thử MQTT:
 ```powershell
-# Gửi 1 gói tin dữ liệu cảm biến mô phỏng tới CoreIoT (truyền token local):
-& '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py --token <COREIOT_DEVICE_TOKEN>
+# Gửi 1 gói tin dữ liệu cảm biến mô phỏng tới CoreIoT (Tự động đọc key từ config/keys.json local):
+& '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py
 
 # Gửi dữ liệu liên tục theo chu kỳ 2 giây (Loop mode):
-& '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py --token <COREIOT_DEVICE_TOKEN> --loop --interval 2
+& '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py --loop --interval 2
 
 # Gửi khoảng cách cố định (ví dụ 15.5 cm):
-& '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py --token <COREIOT_DEVICE_TOKEN> --distance 15.5
 ```
 
 

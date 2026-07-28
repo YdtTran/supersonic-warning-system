@@ -17,10 +17,19 @@ dependencies.lock
 **/dependencies.lock
 
 # ==========================================
-# Local Machine Specific Agent Settings
+# Local Machine Specific Agent Settings & Secrets
 # ==========================================
 # AGENTS.md is machine-specific (copied from AGENTS.template.md)
 AGENTS.md
+config/keys.json
+config/secrets.env
+config/*.env
+config/*.json
+!config/*.template.json
+!config/*.template.env
+*.env
+*.env.local
+
 
 # ==========================================
 # IDEs, Editors & OS Files
