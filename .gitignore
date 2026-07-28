@@ -1,0 +1,44 @@
+# ==========================================
+# ESP-IDF Build Artifacts & Temporary Files
+# ==========================================
+build/
+**/build/
+sdkconfig.old
+**/sdkconfig.old
+sdkconfig.ci
+**/sdkconfig.ci
+
+# ==========================================
+# ESP-IDF Component Manager
+# ==========================================
+managed_components/
+**/managed_components/
+dependencies.lock
+**/dependencies.lock
+
+# ==========================================
+# Local Machine Specific Agent Settings
+# ==========================================
+# AGENTS.md is machine-specific (copied from AGENTS.template.md)
+AGENTS.md
+
+# ==========================================
+# IDEs, Editors & OS Files
+# ==========================================
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosv
+*.sln
+*.swp
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# ==========================================
+# Python Cache Files
+# ==========================================
+__pycache__/
+*.pyc
+*.pyo
