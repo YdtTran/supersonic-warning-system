@@ -1,6 +1,6 @@
-# Waveshare Screen Module - ESP32-S3 LVGL Graphics Application
+# Waveshare Screen Module - ESP32-S3 LVGL Vehicle Warning Display Application
 
-Dự án hiển thị đồ họa LVGL dành cho vi điều khiển **ESP32-S3** kết hợp màn hình cảm ứng **Waveshare ESP32-S3 Touch LCD 7** (800x480 RGB), chạy trên nền tảng **ESP-IDF v6.0.2**.
+Dự án hiển thị đồ họa LVGL dành cho vi điều khiển **ESP32-S3** kết hợp màn hình cảm ứng **Waveshare ESP32-S3 Touch LCD 7 inch** (800x480 RGB), nhận thông tin phát hiện xe và cảnh báo từ **CoreIoT Rule-Chain** server để hiển thị trực quan theo thời gian thực.
 
 ---
 
@@ -16,16 +16,26 @@ Dự án hiển thị đồ họa LVGL dành cho vi điều khiển **ESP32-S3**
 
 ---
 
-## 📁 Cấu trúc Mô-đun Dự án (Project Architecture)
+## 🌐 CoreIoT MQTT Integration & Rule-Chain Data Fetch
+Mô-đun Waveshare Screen sử dụng kết nối MQTT đến server **CoreIoT (ThingsBoard)** để nhận dữ liệu phát hiện xe được xử lý qua **Rule-Chain**:
 
-Dự án được phân chia mô-đun hóa sạch sẽ, tách biệt phần cứng (BSP) và giao diện (UI):
+- **MQTT Broker**: `app.coreiot.io` (Port `1883`)
+- **Device Access Token (Key)**: Đọc từ file local `config/keys.json` (Không commit lên Git)
+- **Luồng dữ liệu**:
+  1. `sensor-node` (JSN-SR04T) gửi khoảng cách xe lên CoreIoT server.
+  2. CoreIoT **Rule-Chain** xử lý quy tắc khoảng cách, tính toán mức cảnh báo và định tuyến dữ liệu.
+  3. `waveshare-screen` nhận thông tin từ CoreIoT Rule-Chain và cập nhật thông số khoảng cách, đồ họa xe & cảnh báo trên màn hình cảm ứng 7 inch.
+
+---
+
+## 📁 Cấu trúc Mô-đun Dự án (Project Architecture)
 
 ```text
 waveshare-screen/
 ├── CMakeLists.txt              # Cấu hình biên dịch dự án root (-Wno-attributes)
 ├── sdkconfig.defaults          # Cấu hình tối ưu PSRAM, FreeRTOS & LVGL
 ├── build_and_flash.bat         # Script biên dịch tăng tiến (Incremental Build) & nạp tự động
-├── README.md                   # Tài liệu hướng dẫn sử dụng dự án
+├── README.md                   # Tài liệu hướng dẫn sử dụng dự án màn hình hiển thị
 ├── version_logs/               # Thư mục lưu vết các phiên bản & lịch sử sửa lỗi
 │   └── VERSION_LOG.md          # Chi tiết các phiên bản & giải pháp vấn đề kĩ thuật
 └── main/
@@ -36,8 +46,8 @@ waveshare-screen/
     │   ├── waveshare_rgb_lcd_port.h # Khai báo chân GPIO, timing 16MHz & hàm driver
     │   └── waveshare_rgb_lcd_port.c # Driver RGB panel, I2C master bus & CH422G
     └── ui/                     # User Interface & Animation Engine
-        ├── ui_app.h / ui_app.c      # Khởi tạo canvas, style nền slate & nhãn "ACLAB 2023"
-        └── ui_anim.h / ui_anim.c    # Bộ công cụ animation di chuyển mượt từ trên xuống
+        ├── ui_app.h / ui_app.c      # Giao diện hiển thị phát hiện xe & mức cảnh báo trên LVGL
+        └── ui_anim.h / ui_anim.c    # Bộ công cụ animation chuyển động mượt mà
 ```
 
 ---
@@ -66,16 +76,6 @@ build_and_flash.bat clean          :: Xóa sạch thư mục build/
 
 ---
 
-## 🌐 CoreIoT MQTT Integration (Server Data Fetch)
-Mô-đun Waveshare Screen sử dụng kết nối MQTT đến server **CoreIoT (ThingsBoard)** để nhận dữ liệu cảm biến và hiển thị trên màn hình:
-
-- **MQTT Broker**: `app.coreiot.io` (Port `1883`)
-- **Device Access Token (Key)**: `<COREIOT_DEVICE_TOKEN>` *(Cấu hình tại file `AGENTS.md` local, không commit lên git)*
-- **Chức năng**: Kết nối tới CoreIoT server, nhận dữ liệu (Telemetry/Attributes) từ server và hiển thị các chỉ số khoảng cách (cm), mức cảnh báo trên giao diện đồ họa LVGL.
-
-
----
-
 ## 🔍 Chẩn đoán Lỗi & Trích xuất Log (Serial Debugging)
 
 Khi màn hình bị tối đen hoặc vi điều khiển gặp sự cố, sử dụng công cụ bắt log Python (thay thế cho `idf_monitor.py` trong môi trường non-TTY):
@@ -89,8 +89,8 @@ C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe ..\.agents\skills\esp32
 I (426) bsp_lcd_port: Install RGB LCD panel driver
 I (479) bsp_lcd_port: Initialize RGB LCD panel
 I (887) GT911: TouchPad_ID: 0x39, 0x31, 0x31
-I (948) main: Initializing ACLAB 2023 UI Application
-I (949) ui_app: ACLAB 2023 UI initialized successfully
+I (948) main: Initializing Vehicle Warning UI Application
+I (949) ui_app: Vehicle Warning UI initialized successfully
 ```
 
 ---

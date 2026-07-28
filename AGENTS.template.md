@@ -7,9 +7,9 @@
 > 4. Cả Agent và Người dùng sẽ đọc các secret keys từ file `config/keys.json` (được `.gitignore` bảo mật, không bao giờ push lên Git).
 
 ## Overview
-This repository contains two independent ESP-IDF projects targeted for **ESP32-S3** microcontrollers:
-1. **`sensor-node/`**: Core sensor node application (includes peripherals like LEDC PWM, GPIO, SPI/I2C sensors). Default Port: **<SENSOR_NODE_PORT, e.g. COM8>**.
-2. **`waveshare-screen/`**: Display application integrated with LVGL graphics library (`lvgl/lvgl`). Default Port: **<WAVESHARE_SCREEN_PORT, e.g. COM9>**.
+This repository contains a **Vehicle Detection & Warning System** built with **ESP32-S3** microcontrollers, the **JSN-SR04T waterproof ultrasonic sensor**, and **CoreIoT (ThingsBoard) Cloud Rule-Chain**.
+1. **`sensor-node/`**: Vehicle detection sensor application using JSN-SR04T waterproof ultrasonic sensor. Measures vehicle distance and publishes telemetry to CoreIoT server via Wi-Fi MQTT (`v1/devices/me/telemetry`). Default Port: **<SENSOR_NODE_PORT, e.g. COM8>**.
+2. **`waveshare-screen/`**: Display application integrated with LVGL graphics library (`lvgl/lvgl`) on a 7-inch RGB Touch LCD. Receives vehicle presence & warning status processed by CoreIoT Rule-Chain via MQTT and renders UI. Default Port: **<WAVESHARE_SCREEN_PORT, e.g. COM9>**.
 
 ## Hardware & Environment Configuration
 - **Target Chip**: `esp32s3` (Dual-Core 240MHz, Wi-Fi, BT 5 LE, 8MB Embedded PSRAM)
