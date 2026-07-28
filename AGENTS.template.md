@@ -99,3 +99,25 @@ Khi làm việc với dự án, luôn tuân thủ quy trình Git theo 4 bước 
    ```
    - Nếu bị reject do có commit mới trên remote, chạy `git pull --rebase origin main`, xử lý conflict (nếu có) rồi mới push lại.
 
+## MQTT Testing & CoreIoT Integration
+Quy trình kiểm thử kết nối MQTT tới đám mây **CoreIoT (ThingsBoard)** sử dụng môi trường Conda `mqtt-coreiot`:
+
+- **Python Conda Executable**: `<MQTT_PYTHON_PATH, e.g. D:\miniconda\envs\mqtt-coreiot\python.exe>`
+- **Broker Host**: `app.coreiot.io` (Port `1883`)
+- **Device Access Key (Token)**: `<COREIOT_DEVICE_TOKEN>` *(Sử dụng cho `waveshare-screen` để lấy dữ liệu từ server CoreIoT và hiển thị lên màn hình)*
+- **Telemetry Topic**: `v1/devices/me/telemetry`
+- **Script Test**: `tools/test_mqtt_coreiot.py`
+
+### Các lệnh kiểm thử MQTT:
+```powershell
+# Gửi 1 gói tin dữ liệu cảm biến mô phỏng tới CoreIoT (truyền token local):
+& '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py --token <COREIOT_DEVICE_TOKEN>
+
+# Gửi dữ liệu liên tục theo chu kỳ 2 giây (Loop mode):
+& '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py --token <COREIOT_DEVICE_TOKEN> --loop --interval 2
+
+# Gửi khoảng cách cố định (ví dụ 15.5 cm):
+& '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py --token <COREIOT_DEVICE_TOKEN> --distance 15.5
+```
+
+

@@ -66,6 +66,16 @@ build_and_flash.bat clean          :: Xóa sạch thư mục build/
 
 ---
 
+## 🌐 CoreIoT MQTT Integration (Server Data Fetch)
+Mô-đun Waveshare Screen sử dụng kết nối MQTT đến server **CoreIoT (ThingsBoard)** để nhận dữ liệu cảm biến và hiển thị trên màn hình:
+
+- **MQTT Broker**: `app.coreiot.io` (Port `1883`)
+- **Device Access Token (Key)**: `<COREIOT_DEVICE_TOKEN>` *(Cấu hình tại file `AGENTS.md` local, không commit lên git)*
+- **Chức năng**: Kết nối tới CoreIoT server, nhận dữ liệu (Telemetry/Attributes) từ server và hiển thị các chỉ số khoảng cách (cm), mức cảnh báo trên giao diện đồ họa LVGL.
+
+
+---
+
 ## 🔍 Chẩn đoán Lỗi & Trích xuất Log (Serial Debugging)
 
 Khi màn hình bị tối đen hoặc vi điều khiển gặp sự cố, sử dụng công cụ bắt log Python (thay thế cho `idf_monitor.py` trong môi trường non-TTY):
