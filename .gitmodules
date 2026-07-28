@@ -1,0 +1,3 @@
+[submodule "examples/lcd-example"]
+	path = examples/lcd-example
+	url = https://github.com/waveshareteam/ESP32-S3-Touch-LCD-7.git

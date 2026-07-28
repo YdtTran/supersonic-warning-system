@@ -67,9 +67,9 @@ Các thư viện phụ thuộc của dự án được tự động tải về q
 
 ## ⚡ 2. Hướng dẫn Cài đặt & Cấu hình Nhanh (Quick Start)
 
-### Bước 1: Clone Repository
+### Bước 1: Clone Repository (Bao gồm Submodules)
 ```cmd
-git clone <repository-url>
+git clone --recurse-submodules https://github.com/YdtTran/supersonic-warning-system.git
 cd supersonic-sensor-ACLAB
 ```
 
