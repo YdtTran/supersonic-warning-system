@@ -128,6 +128,13 @@ Quy trình kiểm thử kết nối MQTT tới đám mây **CoreIoT (ThingsBoard
 & '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py --loop --interval 2
 
 # Gửi khoảng cách cố định (ví dụ 15.5 cm):
+& '<MQTT_PYTHON_PATH>' tools/test_mqtt_coreiot.py --distance 15.5
 ```
+
+## Implementation Logging Requirement
+Quy tắc bắt buộc sau khi hoàn thành triển khai (implement/fix/refactor):
+- Mỗi khi thực hiện xong một nhiệm vụ/tính năng/sửa lỗi, Agent bắt buộc phải tạo hoặc cập nhật một file log Markdown với tên phù hợp mô tả công việc (ví dụ: `version_logs/<FEATURE_OR_TASK_NAME>_LOG.md` hoặc `<component>/version_logs/<TASK_NAME>_LOG.md`).
+- Nội dung file log phải ghi rõ: mục tiêu công việc, các file đã chỉnh sửa, kết quả kiểm thử (build/flash/monitor logs), và hướng dẫn vận hành/chạy demo.
+
 
 

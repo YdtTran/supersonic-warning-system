@@ -21,6 +21,15 @@ extern "C" {
  */
 void ui_anim_start_top_to_bottom(lv_obj_t *obj, int32_t start_y, int32_t end_y, uint32_t duration_ms);
 
+/**
+ * @brief Triggers a 300ms soft glow/flash animation on a row or card container when new data arrives.
+ * 
+ * @param obj Target row/card object
+ * @param original_bg_hex Original background color hex (e.g. 0x1E293B) to settle back into
+ */
+void ui_anim_row_flash(lv_obj_t *obj, uint32_t original_bg_hex);
+
 #ifdef __cplusplus
 }
 #endif
+

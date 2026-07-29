@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS 
         "main.c"
+        "app_network.c"
         "bsp/waveshare_rgb_lcd_port.c"
         "ui/ui_app.c"
         "ui/ui_anim.c"
@@ -16,4 +17,12 @@ idf_component_register(
         esp_lvgl_adapter 
         esp_lcd_touch_gt911 
         lvgl
+        nvs_flash
+        esp_wifi
+        esp_event
+        esp_netif
+        mqtt
 )
+
+
+

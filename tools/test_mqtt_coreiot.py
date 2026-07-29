@@ -112,10 +112,15 @@ def main():
     try:
         if not args.loop:
             distance = args.distance if args.distance is not None else round(random.uniform(10.0, 150.0), 2)
+            is_vehicle = distance < 50.0
             payload = {
                 "distance_cm": distance,
-                "warning_status": "NORMAL" if distance > 30 else "WARNING",
-                "rssi": -65,
+                "distance": distance,
+                "temperature": 28.5,
+                "humidity": 62.0,
+                "vehicle_detected": is_vehicle,
+                "relay": "ON" if is_vehicle else "OFF",
+                "warning_status": "DANGER" if distance < 20 else ("WARNING" if is_vehicle else "NORMAL"),
                 "timestamp": int(time.time() * 1000)
             }
             payload_str = json.dumps(payload)
@@ -130,11 +135,16 @@ def main():
             print("[INFO] Đang gửi dữ liệu liên tục... Nhấn Ctrl+C để dừng.")
             counter = 1
             while True:
-                distance = args.distance if args.distance is not None else round(random.uniform(10.0, 200.0), 2)
-                status = "DANGER" if distance < 20 else ("WARNING" if distance < 50 else "NORMAL")
+                distance = args.distance if args.distance is not None else round(random.uniform(10.0, 180.0), 2)
+                is_vehicle = distance < 50.0
                 payload = {
                     "distance_cm": distance,
-                    "warning_status": status,
+                    "distance": distance,
+                    "temperature": round(26.0 + random.uniform(0, 5), 1),
+                    "humidity": round(55.0 + random.uniform(0, 15), 1),
+                    "vehicle_detected": is_vehicle,
+                    "relay": "ON" if is_vehicle else "OFF",
+                    "warning_status": "DANGER" if distance < 20 else ("WARNING" if is_vehicle else "NORMAL"),
                     "seq": counter,
                     "timestamp": int(time.time() * 1000)
                 }

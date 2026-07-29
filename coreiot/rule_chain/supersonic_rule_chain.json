@@ -1,0 +1,207 @@
+{
+  "ruleChain": {
+    "name": "Supersonic Sensor to Waveshare Screen Forwarding Chain",
+    "type": "CORE",
+    "firstRuleNodeId": null,
+    "root": false,
+    "debugMode": false,
+    "configuration": null,
+    "additionalInfo": {
+      "description": "Rule chain for processing sensor-node ultrasonic telemetry and routing formatted display data to waveshare-screen node."
+    }
+  },
+  "metadata": {
+    "version": 1,
+    "firstNodeIndex": 2,
+    "nodes": [
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode",
+        "name": "Save Timeseries (sensor-node)",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "defaultTTL": 0,
+          "useServerTs": false,
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          }
+        },
+        "additionalInfo": {
+          "layoutX": 450,
+          "layoutY": 150
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgAttributesNode",
+        "name": "Save Attributes",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 3,
+        "configuration": {
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          },
+          "scope": "CLIENT_SCOPE",
+          "notifyDevice": false,
+          "sendAttributesUpdatedNotification": false,
+          "updateAttributesOnlyOnValueChange": true
+        },
+        "additionalInfo": {
+          "layoutX": 450,
+          "layoutY": 250
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode",
+        "name": "Message Type Switch",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "version": 0
+        },
+        "additionalInfo": {
+          "layoutX": 150,
+          "layoutY": 200
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbTransformMsgNode",
+        "name": "Process Ultrasonic & Vehicle Data",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "JS",
+          "jsScript": "var dist = 0.0;\nif (typeof msg.distance_cm !== 'undefined') {\n    dist = parseFloat(msg.distance_cm);\n} else if (typeof msg.distance !== 'undefined') {\n    dist = parseFloat(msg.distance);\n}\n\nvar temp = typeof msg.temperature !== 'undefined' ? parseFloat(msg.temperature) : 28.0;\nvar hum = typeof msg.humidity !== 'undefined' ? parseFloat(msg.humidity) : 65.0;\n\nvar isVehicleDetected = (dist > 0 && dist <= 50.0) || (msg.vehicle_detected === true);\nvar relayState = isVehicleDetected ? \"ON\" : \"OFF\";\nvar warnStatus = dist > 0 && dist < 20.0 ? \"DANGER\" : (isVehicleDetected ? \"WARNING\" : \"NORMAL\");\n\nvar newMsg = {\n    \"distance\": dist,\n    \"distance_cm\": dist,\n    \"vehicle_detected\": isVehicleDetected,\n    \"warning_status\": warnStatus,\n    \"relay\": relayState,\n    \"temperature\": temp,\n    \"humidity\": hum,\n    \"source_device\": \"sensor-node\"\n};\n\nreturn {\n    msg: newMsg,\n    metadata: metadata,\n    msgType: \"POST_ATTRIBUTES_REQUEST\"\n};",
+          "tbelScript": "return {msg: msg, metadata: metadata, msgType: msgType};"
+        },
+        "additionalInfo": {
+          "description": "Standardizes ultrasonic distance, temperature, humidity, vehicle detection, and relay state.",
+          "layoutX": 450,
+          "layoutY": 350
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbChangeOriginatorNode",
+        "name": "Change Originator to waveshare-screen",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "originatorSource": "ENTITY",
+          "preserveOriginatorIfCustomer": false,
+          "entityType": "DEVICE",
+          "entityNamePattern": "waveshare-screen",
+          "relationsQuery": {
+            "direction": "FROM",
+            "maxLevel": 1,
+            "filters": [
+              {
+                "relationType": "Contains",
+                "entityTypes": [],
+                "negate": false
+              }
+            ],
+            "fetchLastLevelOnly": false
+          }
+        },
+        "additionalInfo": {
+          "description": "Changes the message originator to waveshare-screen device (ID: 30287b60-8a67-11f1-84a8-c17e50898235)",
+          "layoutX": 750,
+          "layoutY": 350
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgAttributesNode",
+        "name": "Update Shared Attributes (notifyDevice=true)",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 3,
+        "configuration": {
+          "processingSettings": {
+            "attributes": {
+              "type": "ON_EVERY_MESSAGE"
+            },
+            "webSockets": {
+              "type": "ON_EVERY_MESSAGE"
+            },
+            "calculatedFields": {
+              "type": "ON_EVERY_MESSAGE"
+            },
+            "type": "ADVANCED"
+          },
+          "scope": "SHARED_SCOPE",
+          "notifyDevice": true,
+          "sendAttributesUpdatedNotification": false,
+          "updateAttributesOnlyOnValueChange": false
+        },
+        "additionalInfo": {
+          "description": "Pushes updated telemetry & status to waveshare-screen via MQTT shared attributes",
+          "layoutX": 1050,
+          "layoutY": 350
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode",
+        "name": "Save Timeseries (waveshare-screen)",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "defaultTTL": 0,
+          "useServerTs": false,
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          }
+        },
+        "additionalInfo": {
+          "description": "Saves historical timeseries for waveshare-screen",
+          "layoutX": 1050,
+          "layoutY": 450
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromIndex": 2,
+        "toIndex": 0,
+        "type": "Post telemetry"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 1,
+        "type": "Post attributes"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 3,
+        "type": "Post telemetry"
+      },
+      {
+        "fromIndex": 3,
+        "toIndex": 4,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 4,
+        "toIndex": 5,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 4,
+        "toIndex": 6,
+        "type": "Success"
+      }
+    ],
+    "ruleChainConnections": null
+  }
+}

@@ -1,17 +1,21 @@
 /*
- * SPDX-FileCopyrightText: 2023-2024 Espressif Systems (Shanghai) CO LTD
- *
+ * SPDX-FileCopyrightText: 2023-2026 Espressif Systems (Shanghai) CO LTD
  * SPDX-License-Identifier: CC0-1.0
  */
 
 #include <assert.h>
+#include <stdio.h>
 
 #include "esp_log.h"
 #include "esp_lv_adapter.h"
-#include "lv_demos.h"
 #include "waveshare_rgb_lcd_port.h"
+#include "ui_app.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
-static const char *TAG = "lvgl8_demo";
+#include "app_network.h"
+
+static const char *TAG = "coreiot_dashboard";
 
 void app_main(void)
 {
@@ -53,10 +57,14 @@ void app_main(void)
 
     ESP_ERROR_CHECK(esp_lv_adapter_start());
 
-    ESP_LOGI(TAG, "Starting LVGL music demo");
+    ESP_LOGI(TAG, "Initializing CoreIoT Control & Monitoring Dashboard");
     if (esp_lv_adapter_lock(-1) == ESP_OK)
     {
-        lv_demo_music();
+        ui_app_init();
         esp_lv_adapter_unlock();
     }
+
+    // Initialize Network (Wi-Fi STA + CoreIoT MQTT Client)
+    app_network_init();
 }
+

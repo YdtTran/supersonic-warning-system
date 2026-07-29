@@ -27,17 +27,17 @@ echo ===================================================
 where idf.py >nul 2>&1
 if errorlevel 1 (
     echo [ESP-IDF] Activating ESP-IDF v6.0.2 environment...
-    powershell -ExecutionPolicy Bypass -NoProfile -Command "& 'C:\Espressif\tools\Microsoft.v6.0.2.PowerShell_profile.ps1'; if (-not (Test-Path 'build')) { idf.py -p %TARGET_PORT% set-target esp32s3 }; if ('%ACTION%' -eq 'build') { idf.py -p %TARGET_PORT% flash } elseif ('%ACTION%' -eq 'flash') { idf.py -p %TARGET_PORT% flash } elseif ('%ACTION%' -eq 'monitor') { idf.py -p %TARGET_PORT% monitor } elseif ('%ACTION%' -eq 'all') { idf.py -p %TARGET_PORT% flash monitor } elseif ('%ACTION%' -eq 'clean') { idf.py fullclean }; exit $LASTEXITCODE"
-    exit /b %ERRORLEVEL%
+    powershell -ExecutionPolicy Bypass -NoProfile -Command "& 'C:\Espressif\tools\Microsoft.v6.0.2.PowerShell_profile.ps1'; if (-not (Test-Path 'build')) { idf.py set-target esp32s3 }; if ('%ACTION%' -eq 'build') { idf.py build } elseif ('%ACTION%' -eq 'flash') { idf.py -p %TARGET_PORT% flash } elseif ('%ACTION%' -eq 'monitor') { idf.py -p %TARGET_PORT% monitor } elseif ('%ACTION%' -eq 'all') { idf.py -p %TARGET_PORT% flash monitor } elseif ('%ACTION%' -eq 'clean') { idf.py fullclean }"
+    exit /b !ERRORLEVEL!
 )
 
 if not exist build (
     echo [ESP-IDF] Initializing target esp32s3 for first build...
-    idf.py -p %TARGET_PORT% set-target esp32s3
+    idf.py set-target esp32s3
 )
 
 if "%ACTION%"=="build" (
-    idf.py -p %TARGET_PORT% flash
+    idf.py build
 ) else if "%ACTION%"=="flash" (
     idf.py -p %TARGET_PORT% flash
 ) else if "%ACTION%"=="monitor" (

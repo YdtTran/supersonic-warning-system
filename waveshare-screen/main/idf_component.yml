@@ -2,4 +2,8 @@ dependencies:
   lvgl/lvgl: "^9.1.0"
   espressif/esp_lvgl_adapter: "^0.5.2"
   espressif/esp_lcd_touch_gt911: "^1"
+  espressif/mqtt: "*"
+  espressif/cjson: "^1.7.19"
+
+
 
