@@ -1,3 +1,6 @@
-[submodule "examples/lcd-example"]
-	path = examples/lcd-example
+[submodule "sub/lcd-example"]
+	path = sub/lcd-example
 	url = https://github.com/waveshareteam/ESP32-S3-Touch-LCD-7.git
+[submodule "sub/esp-faq"]
+	path = sub/esp-faq
+	url = https://github.com/espressif/esp-faq.git
