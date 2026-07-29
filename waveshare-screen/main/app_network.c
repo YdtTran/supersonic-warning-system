@@ -102,6 +102,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
                 cJSON *item_veh = get_json_field(json, values_obj, "vehicle_detected");
                 if (!item_veh) item_veh = get_json_field(json, values_obj, "vehicle");
+                if (!item_veh) item_veh = get_json_field(json, values_obj, "check-element");
+                if (!item_veh) item_veh = get_json_field(json, values_obj, "check_element");
 
                 float dist_val = -1.0f;
                 bool vehicle_detected = false;
