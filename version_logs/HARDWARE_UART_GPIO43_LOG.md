@@ -16,7 +16,7 @@ Chuyển đổi ứng dụng đọc cảm biến siêu âm JSN-SR04T từ **Soft
 - **`supersonic-test/src/main.cpp`**:
   - Loại bỏ `SoftUART.h`.
   - Khởi tạo **HardwareSerial SensorSerial(1)** sử dụng **UART1 phần cứng** của ESP32-S3.
-  - Cấu hình chân **RX = GPIO 44**, Baud rate `9600`.
+  - Cấu hình chân **RX = GPIO 43**, Baud rate `9600`.
   - Sử dụng cơ chế đọc buffer phần cứng FIFO (`available()`, `peek()`, `readBytes()`) và đồng bộ khung truyền 4-byte (`0xFF + Data_H + Data_L + Checksum`).
   - Duy trì kiến trúc **Dual Core FreeRTOS**: Task đọc Hardware UART trên **Core 1**, Task hiển thị trên **Core 0** qua `xSensorQueue`.
 

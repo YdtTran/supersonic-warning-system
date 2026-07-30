@@ -50,34 +50,84 @@ bool readHardwareUartSensorPacket(HardwareSerial &serial, uint16_t *distance_mm,
     return false;
 }
 
-// --- TASK 1: ĐỌC CẢM BIẾN BẰNG HARDWARE UART (CỐ ĐỊNH TRÊN CORE 1) ---
+// Hàm tính giá trị Trung Vị (Median) của 5 mẫu
+uint16_t getMedian5(uint16_t samples[5])
+{
+    uint16_t sorted[5];
+    for (int i = 0; i < 5; i++)
+    {
+        sorted[i] = samples[i];
+    }
+
+    // Sắp xếp Bubble Sort 5 phần tử
+    for (int i = 0; i < 4; i++)
+    {
+        for (int j = i + 1; j < 5; j++)
+        {
+            if (sorted[i] > sorted[j])
+            {
+                uint16_t temp = sorted[i];
+                sorted[i] = sorted[j];
+                sorted[j] = temp;
+            }
+        }
+    }
+    return sorted[2]; // Trả về phần tử ở vị trí chính giữa (Index 2)
+}
+
+// --- TASK 1: ĐỌC CẢM BIẾN & LỌC TRUNG VỊ 5 MẪU (KỊCH BẢN MẶT NƯỚC - CORE 1) ---
 void TaskReadSensorHardwareUART(void *pvParameters)
 {
-    Serial.printf("[RTOS] TaskReadSensorHardwareUART đang chạy trên CORE %d (Hardware UART1, RX GPIO %d)\n",
+    Serial.printf("[RTOS] TaskReadSensorHardwareUART (CORE %d, Hardware UART1 RX GPIO %d, Median-5 Filter)\n",
                   xPortGetCoreID(), SENSOR_RX_PIN);
 
-    // Khởi tạo Hardware UART 1: Baudrate 9600, RX=GPIO 44, TX=-1
+    // Khởi tạo Hardware UART 1: Baudrate 9600, RX=GPIO 43, TX=-1
     SensorSerial.begin(9600, SERIAL_8N1, SENSOR_RX_PIN, -1);
 
     SensorBatch_t batch;
+    uint16_t samples[5];
+    int validCount = 0;
+    int attemptCount = 0;
 
     for (;;)
     {
         batch.timestamp = millis();
+        validCount = 0;
+        attemptCount = 0;
 
-        uint16_t dist_mm = 0;
-        bool ok = readHardwareUartSensorPacket(SensorSerial, &dist_mm, 50);
+        // Thu thập 5 mẫu hợp lệ liên tiếp (Tối đa 10 lần thử)
+        while (validCount < 5 && attemptCount < 10)
+        {
+            attemptCount++;
+            uint16_t dist_mm = 0;
+            bool ok = readHardwareUartSensorPacket(SensorSerial, &dist_mm, 100);
+            if (ok && dist_mm > 0)
+            {
+                samples[validCount] = dist_mm;
+                validCount++;
+            }
+            vTaskDelay(pdMS_TO_TICKS(150)); // Giãn cách 150ms giữa các lần thu mẫu để tránh chồng xung dội
+        }
 
-        batch.distances_mm[0] = ok ? dist_mm : 0;
-        batch.valid[0] = ok;
+        if (validCount >= 5)
+        {
+            uint16_t median_dist_mm = getMedian5(samples);
+            batch.distances_mm[0] = median_dist_mm;
+            batch.valid[0] = true;
+        }
+        else
+        {
+            batch.distances_mm[0] = 0;
+            batch.valid[0] = false;
+        }
 
-        // Đẩy kết quả vào FreeRTOS Queue (Non-blocking)
+        // Đẩy kết quả sau khi lọc trung vị vào Queue
         if (xSensorQueue != NULL)
         {
             xQueueSend(xSensorQueue, &batch, 0);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
 
@@ -92,13 +142,13 @@ void TaskDisplayMain(void *pvParameters)
     {
         if (xQueueReceive(xSensorQueue, &receivedBatch, pdMS_TO_TICKS(1000)) == pdTRUE)
         {
-            Serial.printf("\n--- [TIME: %6d ms] KẾT QUẢ ĐỌC HARDWARE UART (GPIO %d) ---\n",
+            Serial.printf("\n--- [TIME: %6d ms] KẾT QUẢ ĐỌC LỌC TRUNG VỊ 5 MẪU (GPIO %d) ---\n",
                           receivedBatch.timestamp, SENSOR_RX_PIN);
 
             if (receivedBatch.valid[0])
             {
                 float cm = receivedBatch.distances_mm[0] / 10.0f;
-                Serial.printf("  Sensor 1 (GPIO %2d): %4d mm (%5.1f cm) [OK]\n",
+                Serial.printf("  Sensor 1 (GPIO %2d): %4d mm (%5.1f cm) [MEDIAN 5 OK]\n",
                               SENSOR_RX_PIN, receivedBatch.distances_mm[0], cm);
             }
             else
@@ -118,9 +168,9 @@ void setup()
         ;
 
     Serial.println("\n=======================================================");
-    Serial.println("  HỆ THỐNG CẢM BIẾN SIÊU ÂM - HARDWARE UART DUAL CORE");
-    Serial.println("  Hardware UART1 RX Pin: GPIO 44                        ");
-    Serial.println("  Core 1: TaskReadSensorHardwareUART                     ");
+    Serial.println("  HỆ THỐNG ĐO MẶT NƯỚC - LỌC TRUNG VỊ 5 MẪU (MEDIAN 5)");
+    Serial.println("  Hardware UART1 RX Pin: GPIO 43                        ");
+    Serial.println("  Core 1: TaskReadSensorHardwareUART (Median Filter)     ");
     Serial.println("  Core 0: TaskDisplayMain (FreeRTOS Queue)               ");
     Serial.println("=======================================================\n");
 

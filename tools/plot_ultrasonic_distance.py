@@ -125,8 +125,11 @@ class RealtimePlotter:
 
     def read_data(self):
         """Đọc dòng dữ liệu mới nhất từ UART."""
-        while self.ser.in_waiting > 0:
-            try:
+        if not self.ser or not self.ser.is_open:
+            return
+
+        try:
+            while self.ser.in_waiting > 0:
                 raw_line = self.ser.readline().decode('utf-8', errors='ignore').strip()
                 if not raw_line:
                     continue
@@ -140,8 +143,8 @@ class RealtimePlotter:
                 else:
                     if "[FAIL]" in raw_line or "TIMEOUT" in raw_line:
                         self.failed_samples += 1
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     def update_plot(self, frame):
         """Hàm cập nhật đồ thị cho Matplotlib FuncAnimation."""
