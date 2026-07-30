@@ -41,4 +41,8 @@ pio run -d supersonic-test --target upload
 
 # Mở Serial Monitor xem log:
 pio device monitor -b 115200
+
+# Chạy phần mềm đồ thị đường khoảng cách thời gian thực (Python Plotter):
+& 'D:\miniconda\envs\mqtt-coreiot\python.exe' tools/plot_ultrasonic_distance.py --port COM3
 ```
+
