@@ -106,7 +106,7 @@ void TaskReadSensorHardwareUART(void *pvParameters)
                 samples[validCount] = dist_mm;
                 validCount++;
             }
-            vTaskDelay(pdMS_TO_TICKS(150)); // Giãn cách 150ms giữa các lần thu mẫu để tránh chồng xung dội
+            vTaskDelay(pdMS_TO_TICKS(50)); // Giãn cách 150ms giữa các lần thu mẫu để tránh chồng xung dội
         }
 
         if (validCount >= 5)
@@ -127,7 +127,7 @@ void TaskReadSensorHardwareUART(void *pvParameters)
             xQueueSend(xSensorQueue, &batch, 0);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(200));
+        // vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
 
