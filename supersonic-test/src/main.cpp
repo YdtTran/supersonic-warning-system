@@ -1,7 +1,7 @@
 #include <Arduino.h>
 
 #define NUM_SENSORS 1
-const int SENSOR_RX_PIN = 44;
+const int SENSOR_RX_PIN = 43;
 
 // Sử dụng Hardware UART 1 của ESP32-S3
 HardwareSerial SensorSerial(1);
