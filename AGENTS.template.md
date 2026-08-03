@@ -8,8 +8,8 @@
 
 ## Overview
 This repository contains a **Vehicle Detection & Warning System** built with **ESP32-S3** microcontrollers, the **JSN-SR04T waterproof ultrasonic sensor**, and **CoreIoT (ThingsBoard) Cloud Rule-Chain**.
-1. **`sensor-node/`**: Vehicle detection sensor application using JSN-SR04T waterproof ultrasonic sensor. Measures vehicle distance and publishes telemetry to CoreIoT server via Wi-Fi MQTT (`v1/devices/me/telemetry`). Default Port: **<SENSOR_NODE_PORT, e.g. COM8>**.
-2. **`waveshare-screen/`**: Display application integrated with LVGL graphics library (`lvgl/lvgl`) on a 7-inch RGB Touch LCD. Receives vehicle presence & warning status processed by CoreIoT Rule-Chain via MQTT and renders UI. Default Port: **<WAVESHARE_SCREEN_PORT, e.g. COM9>**.
+1. **`firmware/sensor-node/`**: Vehicle detection sensor application using JSN-SR04T waterproof ultrasonic sensor. Measures vehicle distance and publishes telemetry to CoreIoT server via Wi-Fi MQTT (`v1/devices/me/telemetry`). Default Port: **<SENSOR_NODE_PORT, e.g. COM8>**.
+2. **`firmware/waveshare-screen/`**: Display application integrated with LVGL graphics library (`lvgl/lvgl`) on a 7-inch RGB Touch LCD. Receives vehicle presence & warning status processed by CoreIoT Rule-Chain via MQTT and renders UI. Default Port: **<WAVESHARE_SCREEN_PORT, e.g. COM9>**.
 
 ## Hardware & Environment Configuration
 - **Target Chip**: `esp32s3` (Dual-Core 240MHz, Wi-Fi, BT 5 LE, 8MB Embedded PSRAM)
@@ -27,7 +27,7 @@ Both projects are configured in `main/CMakeLists.txt` to include and link **all 
 - **Storage & Filesystems**: `nvs_flash`, `spiffs`, `fatfs`, `vfs`
 - **System & RTOS**: `freertos`, `log`, `esp_timer`, `esp_event`, `esp_system`
 - **Networking**: `esp_wifi`, `esp_netif`, `esp_http_client`, `esp_http_server`
-- **Graphics (waveshare-screen)**: `lvgl/lvgl` (managed via `idf_component.yml`)
+- **Graphics (firmware/waveshare-screen)**: `lvgl/lvgl` (managed via `idf_component.yml`)
 
 ## Build & Flash Commands
 
@@ -36,7 +36,7 @@ Each project contains a standalone `build_and_flash.bat` script that configures 
 
 **Sensor Node:**
 ```cmd
-cd sensor-node
+cd firmware/sensor-node
 build_and_flash.bat build                           :: Build project
 build_and_flash.bat flash <SENSOR_NODE_PORT>        :: Flash to specified port
 build_and_flash.bat monitor <SENSOR_NODE_PORT>      :: Open Serial Monitor
@@ -45,7 +45,7 @@ build_and_flash.bat all <SENSOR_NODE_PORT>          :: Build, Flash & Monitor
 
 **Waveshare Screen:**
 ```cmd
-cd waveshare-screen
+cd firmware/waveshare-screen
 build_and_flash.bat build                           :: Build project (fetches LVGL automatically)
 build_and_flash.bat flash <WAVESHARE_SCREEN_PORT>   :: Flash to specified port
 build_and_flash.bat monitor <WAVESHARE_SCREEN_PORT> :: Open Serial Monitor
@@ -109,8 +109,8 @@ Quy trình kiểm thử kết nối MQTT tới đám mây **CoreIoT (ThingsBoard
 - **Python Conda Executable**: `<MQTT_PYTHON_PATH, e.g. D:\miniconda\envs\mqtt-coreiot\python.exe>`
 - **Broker Host**: `app.coreiot.io` (Port `1883`)
 - **Device Access Keys (Tokens)**:
-  - **`SENSOR_NODE_DEVICE_TOKEN`**: `<SENSOR_NODE_ACCESS_TOKEN>` *(Sử dụng cho `sensor-node` gửi telemetry cảm biến JSN-SR04T)*
-  - **`WAVESHARE_SCREEN_DEVICE_TOKEN`**: `<WAVESHARE_SCREEN_ACCESS_TOKEN>` *(Sử dụng cho `waveshare-screen` lấy dữ liệu qua CoreIoT Rule-Chain hiển thị lên màn hình)*
+  - **`SENSOR_NODE_DEVICE_TOKEN`**: `<SENSOR_NODE_ACCESS_TOKEN>` *(Sử dụng cho `firmware/sensor-node` gửi telemetry cảm biến JSN-SR04T)*
+  - **`WAVESHARE_SCREEN_DEVICE_TOKEN`**: `<WAVESHARE_SCREEN_ACCESS_TOKEN>` *(Sử dụng cho `firmware/waveshare-screen` lấy dữ liệu qua CoreIoT Rule-Chain hiển thị lên màn hình)*
 - **Telemetry Topic**: `v1/devices/me/telemetry`
 - **Script Test**: `tools/test_mqtt_coreiot.py`
 
@@ -133,7 +133,7 @@ Quy trình kiểm thử kết nối MQTT tới đám mây **CoreIoT (ThingsBoard
 
 ## Implementation Logging Requirement
 Quy tắc bắt buộc sau khi hoàn thành triển khai (implement/fix/refactor):
-- Mỗi khi thực hiện xong một nhiệm vụ/tính năng/sửa lỗi, Agent bắt buộc phải tạo hoặc cập nhật một file log Markdown với tên phù hợp mô tả công việc (ví dụ: `version_logs/<FEATURE_OR_TASK_NAME>_LOG.md` hoặc `<component>/version_logs/<TASK_NAME>_LOG.md`).
+- Mỗi khi thực hiện xong một nhiệm vụ/tính năng/sửa lỗi, Agent bắt buộc phải tạo hoặc cập nhật một file log Markdown với tên phù hợp mô tả công việc (ví dụ: `docs/logs/<COMPONENT>_<TASK_NAME>_LOG.md`).
 - Nội dung file log phải ghi rõ: mục tiêu công việc, các file đã chỉnh sửa, kết quả kiểm thử (build/flash/monitor logs), và hướng dẫn vận hành/chạy demo.
 
 

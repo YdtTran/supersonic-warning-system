@@ -59,5 +59,5 @@ After running the skill:
 
 - [ ] `AGENTS.md` exists in the workspace root.
 - [ ] `AGENTS.md` contains valid, absolute local paths.
-- [ ] Running project batch scripts (e.g. `sensor-node/build_and_flash.bat build`) successfully activates ESP-IDF.
+- [ ] Running project batch scripts (e.g. `firmware/sensor-node/build_and_flash.bat build`) successfully activates ESP-IDF.
 - [ ] `AGENTS.md` is ignored by git (via `.gitignore`), ensuring local changes are not committed to source control.

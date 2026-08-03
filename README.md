@@ -13,7 +13,7 @@ Hệ thống nhúng vi điều khiển **ESP32-S3** phát hiện xe thông qua *
              │ (Echo / Trig GPIO)
              ▼
  ┌────────────────────────┐
- │  ESP32-S3 Sensor Node  │ (sensor-node: Xử lý khoảng cách, phát hiện xe)
+ │  ESP32-S3 Sensor Node  │ (firmware/sensor-node: Xử lý khoảng cách, phát hiện xe)
  └───────────┬────────────┘
              │ (Wi-Fi MQTT Telemetry: v1/devices/me/telemetry)
              ▼
@@ -23,7 +23,7 @@ Hệ thống nhúng vi điều khiển **ESP32-S3** phát hiện xe thông qua *
              │ (MQTT Subscribe / Rule-Chain Forward)
              ▼
  ┌────────────────────────┐
- │ Waveshare Screen Node  │ (waveshare-screen: Hiển thị cảnh báo trực quan trên LCD 7")
+ │ Waveshare Screen Node  │ (firmware/waveshare-screen: Hiển thị cảnh báo trực quan trên LCD 7")
  └────────────────────────┘
 ```
 
@@ -45,16 +45,27 @@ supersonic-sensor-ACLAB/
 │       └── esp32_screen_debug/        # Skill chẩn đoán lỗi hiển thị, I2C driver & trích xuất log
 ├── tools/                             # Công cụ kiểm thử MQTT với môi trường Conda 'mqtt-coreiot'
 │   └── test_mqtt_coreiot.py           # Script mô phỏng phát dữ liệu xe & kiểm tra kết nối CoreIoT
-├── sensor-node/                       # [Project 1] Firmware cảm biến JSN-SR04T (Port mặc định: COM8)
-│   ├── CMakeLists.txt
-│   ├── sdkconfig.defaults
-│   ├── build_and_flash.bat            # Script biên dịch & nạp firmware nhanh
-│   └── main/                          # Mã nguồn đọc JSN-SR04T & phát dữ liệu xe lên CoreIoT
-└── waveshare-screen/                  # [Project 2] Firmware màn hình cảm ứng LVGL 7" (Port mặc định: COM9)
-    ├── CMakeLists.txt
-    ├── sdkconfig.defaults
-    ├── build_and_flash.bat            # Script biên dịch & nạp firmware nhanh
-    └── main/                          # Mã nguồn BSP & Giao diện LVGL nhận dữ liệu từ CoreIoT Rule-Chain
+├── firmware/                          # Firmware chính thức (production)
+│   ├── sensor-node/                   # [Project 1] Firmware cảm biến JSN-SR04T (Port mặc định: COM8)
+│   │   ├── CMakeLists.txt
+│   │   ├── sdkconfig.defaults
+│   │   ├── build_and_flash.bat        # Script biên dịch & nạp firmware nhanh
+│   │   └── main/                      # Mã nguồn đọc JSN-SR04T & phát dữ liệu xe lên CoreIoT
+│   └── waveshare-screen/              # [Project 2] Firmware màn hình cảm ứng LVGL 7" (Port mặc định: COM9)
+│       ├── CMakeLists.txt
+│       ├── sdkconfig.defaults
+│       ├── build_and_flash.bat        # Script biên dịch & nạp firmware nhanh
+│       └── main/                      # Mã nguồn BSP & Giao diện LVGL nhận dữ liệu từ CoreIoT Rule-Chain
+├── prototypes/                        # Firmware thử nghiệm / nghiên cứu (chưa production)
+│   └── water-level-uart/              # PlatformIO – đo mực nước JSN-SR04T-V3 UART + Kalman/Median-5 filter
+├── cloud/
+│   └── coreiot/rule_chain/            # Cấu hình Rule-Chain CoreIoT (ThingsBoard)
+├── reference/                         # Submodule mã nguồn tham khảo (vendor)
+│   ├── lcd-example/                   # Waveshare ESP32-S3 Touch LCD 7 official examples
+│   └── esp-faq/                       # ESP-IDF FAQ tham khảo
+└── docs/
+    ├── architecture/                  # Tài liệu kiến trúc & review
+    └── logs/                          # Nhật ký triển khai (version logs) gộp từ mọi component
 ```
 
 ---
@@ -124,9 +135,9 @@ python .agents/skills/cross_device_reconfig/scripts/scan_env.py
 
 Mỗi dự án đều tích hợp script `build_and_flash.bat` hỗ trợ biên dịch tăng tiến (Incremental Build) cực nhanh.
 
-### A. Mô-đun Cảm biến JSN-SR04T (`sensor-node`)
+### A. Mô-đun Cảm biến JSN-SR04T (`firmware/sensor-node`)
 ```cmd
-cd sensor-node
+cd firmware/sensor-node
 
 :: Biên dịch dự án
 build_and_flash.bat build
@@ -135,9 +146,9 @@ build_and_flash.bat build
 build_and_flash.bat all COM8
 ```
 
-### B. Mô-đun Màn hình (`waveshare-screen`)
+### B. Mô-đun Màn hình (`firmware/waveshare-screen`)
 ```cmd
-cd waveshare-screen
+cd firmware/waveshare-screen
 
 :: Biên dịch (tự động tải LVGL trong lần đầu)
 build_and_flash.bat build
@@ -171,4 +182,4 @@ python .agents/skills/esp32_screen_debug/scripts/read_serial.py COM9 5
 
 Chi tiết chẩn đoán lỗi và giải pháp đã xử lý có thể tham khảo tại:
 - Skill chẩn đoán màn hình: [.agents/skills/esp32_screen_debug/SKILL.md](file:///e:/supersonic-sensor-ACLAB/.agents/skills/esp32_screen_debug/SKILL.md)
-- Nhật ký sửa lỗi màn hình: [waveshare-screen/version_logs/VERSION_LOG.md](file:///e:/supersonic-sensor-ACLAB/waveshare-screen/version_logs/VERSION_LOG.md)
+- Nhật ký sửa lỗi màn hình: [docs/logs/WAVESHARE_SCREEN_VERSION_LOG.md](file:///e:/supersonic-sensor-ACLAB/docs/logs/WAVESHARE_SCREEN_VERSION_LOG.md)

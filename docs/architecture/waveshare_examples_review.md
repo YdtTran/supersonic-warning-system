@@ -8,19 +8,19 @@
 
 ## 1. Overview & Inventory of Manufacturer Examples
 
-The manufacturer examples located in [`sub/lcd-example/examples/ESP-IDF`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF) showcase peripheral integration for the Waveshare ESP32-S3 development platform.
+The manufacturer examples located in [`reference/lcd-example/examples/ESP-IDF`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF) showcase peripheral integration for the Waveshare ESP32-S3 development platform.
 
 | Module | Location | Primary Peripherals / Drivers | Practical Function / Purpose |
 | :--- | :--- | :--- | :--- |
-| **01_I2C_Test** | [`01_I2C_Test/`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/01_I2C_Test) | `driver/i2c_master.h`, `esp_console` | Interactive I2C bus scanner & register read/write REPL console (`i2cdetect`, `i2cget`, `i2cset`). |
-| **02_RS485_Test** | [`02_RS485_Test/`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/02_RS485_Test) | `driver/uart.h` | Half-duplex RS485 UART echo receiver & transmitter with IRAM interrupt capability. |
-| **03_SD_Test** | [`03_SD_Test/`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/03_SD_Test) | `esp_vfs_fat_sdspi`, `driver/spi_master.h`, CH422G | SD Card mounting over SPI, FatFS file read/write/rename, CH422G IO expander CS pin control. |
-| **04_Sensor_AD** | [`04_Sensor_AD/`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/04_Sensor_AD) | `esp_adc/adc_oneshot.h`, `esp_adc/adc_cali.h` | Oneshot ADC raw reading & Curve-Fitting calibration to convert raw samples to millivolts. |
-| **05_UART_Test** | [`05_UART_Test/`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/05_UART_Test) | `driver/uart.h` | Basic serial data echo loop. |
-| **06_TWAItransmit** | [`06_TWAItransmit/`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/06_TWAItransmit) | `driver/twai.h`, CH422G, FSUSB42UMX | CAN Bus (TWAI) message transmission, alert monitoring, and FSUSB42UMX pin multiplexer switching. |
-| **07_TWAIreceive** | [`07_TWAIreceive/`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/07_TWAIreceive) | `driver/twai.h`, CH422G, FSUSB42UMX | CAN Bus (TWAI) message reception queue and alert logging. |
-| **08_lvgl_v8_demo** | [`08_lvgl_v8_demo/`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/08_lvgl_v8_demo) | `esp_lcd_rgb_panel`, GT911, LVGL v8, PSRAM | LVGL v8 RGB 800x480 GUI demo with GT911 touch reset sequence via CH422G and PSRAM bounce buffering. |
-| **09_lvgl_v9_demo** | [`09_lvgl_v9_demo/`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/09_lvgl_v9_demo) | `esp_lcd_rgb_panel`, GT911, LVGL v9, PSRAM | LVGL v9 GUI porting layer with updated display/indev registration APIs. |
+| **01_I2C_Test** | [`01_I2C_Test/`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/01_I2C_Test) | `driver/i2c_master.h`, `esp_console` | Interactive I2C bus scanner & register read/write REPL console (`i2cdetect`, `i2cget`, `i2cset`). |
+| **02_RS485_Test** | [`02_RS485_Test/`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/02_RS485_Test) | `driver/uart.h` | Half-duplex RS485 UART echo receiver & transmitter with IRAM interrupt capability. |
+| **03_SD_Test** | [`03_SD_Test/`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/03_SD_Test) | `esp_vfs_fat_sdspi`, `driver/spi_master.h`, CH422G | SD Card mounting over SPI, FatFS file read/write/rename, CH422G IO expander CS pin control. |
+| **04_Sensor_AD** | [`04_Sensor_AD/`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/04_Sensor_AD) | `esp_adc/adc_oneshot.h`, `esp_adc/adc_cali.h` | Oneshot ADC raw reading & Curve-Fitting calibration to convert raw samples to millivolts. |
+| **05_UART_Test** | [`05_UART_Test/`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/05_UART_Test) | `driver/uart.h` | Basic serial data echo loop. |
+| **06_TWAItransmit** | [`06_TWAItransmit/`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/06_TWAItransmit) | `driver/twai.h`, CH422G, FSUSB42UMX | CAN Bus (TWAI) message transmission, alert monitoring, and FSUSB42UMX pin multiplexer switching. |
+| **07_TWAIreceive** | [`07_TWAIreceive/`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/07_TWAIreceive) | `driver/twai.h`, CH422G, FSUSB42UMX | CAN Bus (TWAI) message reception queue and alert logging. |
+| **08_lvgl_v8_demo** | [`08_lvgl_v8_demo/`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/08_lvgl_v8_demo) | `esp_lcd_rgb_panel`, GT911, LVGL v8, PSRAM | LVGL v8 RGB 800x480 GUI demo with GT911 touch reset sequence via CH422G and PSRAM bounce buffering. |
+| **09_lvgl_v9_demo** | [`09_lvgl_v9_demo/`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/09_lvgl_v9_demo) | `esp_lcd_rgb_panel`, GT911, LVGL v9, PSRAM | LVGL v9 GUI porting layer with updated display/indev registration APIs. |
 
 ---
 
@@ -41,7 +41,7 @@ The CH422G controls critical hardware control lines:
 ---
 
 ### 2.2 RGB Display & Memory (PSRAM) Management
-Located in [`waveshare_rgb_lcd_port.c`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/08_lvgl_v8_demo/components/waveshare_rgb_lcd_port.c):
+Located in [`waveshare_rgb_lcd_port.c`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/08_lvgl_v8_demo/components/waveshare_rgb_lcd_port.c):
 
 1. **PSRAM Framebuffer Allocation (`.fb_in_psram = 1`)**:
    - Resolution 800x480 @ 16-bit (RGB565) requires **768 KB per frame buffer**. Dual buffering requires **~1.5 MB**, which exceeds internal SRAM (~512 KB).
@@ -53,7 +53,7 @@ Located in [`waveshare_rgb_lcd_port.c`](file:///e:/supersonic-sensor-ACLAB/sub/l
 ---
 
 ### 2.3 CAN/TWAI Communication & USB MUX Switching
-Located in [`waveshare_twai_port.c`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/06_TWAItransmit/main/waveshare_twai_port.c):
+Located in [`waveshare_twai_port.c`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/06_TWAItransmit/main/waveshare_twai_port.c):
 
 1. **Hardware Pin MUXing**:
    - `waveshare_twai_init()` initializes I2C, then sends commands to CH422G to switch `FSUSB42UMX` to CAN mode (`0x20` to `0x38`).
@@ -64,7 +64,7 @@ Located in [`waveshare_twai_port.c`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-
 ---
 
 ### 2.4 SD Card Mounting & File Handling
-Located in [`sd_card.c`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/03_SD_Test/main/sd_card.c):
+Located in [`sd_card.c`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/03_SD_Test/main/sd_card.c):
 
 1. **SPI Mode Mounting**:
    - Mounts FATFS filesystem via `esp_vfs_fat_sdspi_mount`.
@@ -75,7 +75,7 @@ Located in [`sd_card.c`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/exam
 ---
 
 ### 2.5 ADC Sensor Measurement & Calibration
-Located in [`oneshot_read_main.c`](file:///e:/supersonic-sensor-ACLAB/sub/lcd-example/examples/ESP-IDF/04_Sensor_AD/main/oneshot_read_main.c):
+Located in [`oneshot_read_main.c`](file:///e:/supersonic-sensor-ACLAB/reference/lcd-example/examples/ESP-IDF/04_Sensor_AD/main/oneshot_read_main.c):
 
 1. **ADC Oneshot Unit API**:
    - Uses ESP-IDF v5 ADC Oneshot API (`adc_oneshot_new_unit`, `adc_oneshot_config_channel`).

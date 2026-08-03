@@ -36,8 +36,6 @@ waveshare-screen/
 ├── sdkconfig.defaults          # Cấu hình tối ưu PSRAM, FreeRTOS & LVGL
 ├── build_and_flash.bat         # Script biên dịch tăng tiến (Incremental Build) & nạp tự động
 ├── README.md                   # Tài liệu hướng dẫn sử dụng dự án màn hình hiển thị
-├── version_logs/               # Thư mục lưu vết các phiên bản & lịch sử sửa lỗi
-│   └── VERSION_LOG.md          # Chi tiết các phiên bản & giải pháp vấn đề kĩ thuật
 └── main/
     ├── CMakeLists.txt          # Đăng ký mô-đun BSP và UI vào hệ thống build ESP-IDF
     ├── idf_component.yml       # Quản lý dependency (esp_lvgl_adapter, esp_lcd_touch_gt911)
@@ -58,7 +56,7 @@ Dự án hỗ trợ script `build_and_flash.bat` tự động nhận diện môi
 
 ### 1. Biên dịch và Nạp tự động (Cổng COM9)
 ```cmd
-cd waveshare-screen
+cd firmware/waveshare-screen
 build_and_flash.bat
 ```
 
@@ -81,7 +79,7 @@ build_and_flash.bat clean          :: Xóa sạch thư mục build/
 Khi màn hình bị tối đen hoặc vi điều khiển gặp sự cố, sử dụng công cụ bắt log Python (thay thế cho `idf_monitor.py` trong môi trường non-TTY):
 
 ```cmd
-C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe ..\.agents\skills\esp32_screen_debug\scripts\read_serial.py COM9 5
+C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe .agents\skills\esp32_screen_debug\scripts\read_serial.py COM9 5
 ```
 
 ### Log khởi động chuẩn (Golden Boot Log):
@@ -97,7 +95,7 @@ I (949) ui_app: Vehicle Warning UI initialized successfully
 
 ## 📋 Lịch sử Các Lỗi Đã Xử Lý (Troubleshooting Reference)
 
-Chi tiết đầy đủ xem tại [version_logs/VERSION_LOG.md](file:///e:/supersonic-sensor-ACLAB/waveshare-screen/version_logs/VERSION_LOG.md):
+Chi tiết đầy đủ xem tại [docs/logs/WAVESHARE_SCREEN_VERSION_LOG.md](file:///e:/supersonic-sensor-ACLAB/docs/logs/WAVESHARE_SCREEN_VERSION_LOG.md):
 - **`ISSUE-01`**: Thêm `-Wno-attributes` xử lý xung đột GCC 15 macro.
 - **`ISSUE-02`**: Cập nhật struct `esp_lcd_rgb_panel_config_t` chuẩn ESP-IDF v6.0.2.
 - **`ISSUE-03`**: Khắc phục lỗi `0/1961` rebuild lại từ đầu bằng cách bỏ lệnh `set-target` lặp lại.

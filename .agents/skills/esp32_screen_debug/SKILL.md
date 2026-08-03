@@ -27,7 +27,7 @@ This skill provides a systematic methodology for capturing runtime serial logs, 
    C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe scripts/read_serial.py COM9 5
    ```
 2. **Batch Build & Flash Utility**:
-   Located at `waveshare-screen/build_and_flash.bat`. Supports non-destructive incremental builds and auto-flashing.
+   Located at `firmware/waveshare-screen/build_and_flash.bat`. Supports non-destructive incremental builds and auto-flashing.
 
 ---
 
@@ -91,7 +91,7 @@ C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe .agents/skills/esp32_sc
 
 ## Verification Checklist
 
-1. **Build & Flash**: Run `build_and_flash.bat` from `waveshare-screen/`. Ensure 0 build errors.
+1. **Build & Flash**: Run `build_and_flash.bat` from `firmware/waveshare-screen/`. Ensure 0 build errors.
 2. **UART Inspection**: Run `read_serial.py COM9 5`. Verify lines:
    - `lcd_port: Initialize RGB LCD panel`
    - `GT911: TouchPad_ID: 0x39...`
