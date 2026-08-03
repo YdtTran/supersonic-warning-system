@@ -19,7 +19,7 @@ static const SensorPinConfig SENSOR_PINS[] = {
     {47, 7}, // Cảm biến 1
 };
 
-static const size_t SENSOR_COUNT = 1;
+static const size_t SENSOR_COUNT = 2;
 
 // =========================================================
 // CẤU HÌNH CẢM BIẾN JSN-SR04T
