@@ -29,13 +29,15 @@ config/*.json
 !config/*.template.env
 *.env
 *.env.local
-
+c_cpp_properties.json
+launch.json
 
 # ==========================================
 # IDEs, Editors & OS Files
 # ==========================================
-.vscode/
+# .vscode/
 .idea/
+.pio/
 *.suo
 *.user
 *.userosv

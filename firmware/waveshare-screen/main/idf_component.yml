@@ -4,6 +4,3 @@ dependencies:
   espressif/esp_lcd_touch_gt911: "^1"
   espressif/mqtt: "*"
   espressif/cjson: "^1.7.19"
-
-
-

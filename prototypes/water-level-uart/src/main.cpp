@@ -1,209 +1,134 @@
+/*
+  ĐO MỰC NƯỚC BẰNG JSN-SR04T-V3 (UART MODE 1) + KALMAN FILTER
+  --------------------------------------------------------------
+  - Sensor lắp ở độ cao H_SENSOR_MM so với đáy bể / mặt đất.
+  - Sensor đo khoảng cách từ nó đến mặt nước (d_raw).
+  - Mực nước = H_SENSOR_MM - d_filtered (d_filtered đã qua Kalman).
+
+  Khung UART Mode 1 (4 byte, baud 9600, 8N1):
+    [0] Header   = 0xFF
+    [1] Data_H
+    [2] Data_L
+    [3] Checksum = (Header + Data_H + Data_L) & 0xFF
+    distance_mm  = (Data_H << 8) | Data_L
+
+  Đấu nối (ví dụ ESP32):
+    JSN-SR04T-V3 TX  -> ESP32 RX2 (GPIO44)
+    JSN-SR04T-V3 RX  -> ESP32 TX2 (GPIO43)   (không bắt buộc dùng ở mode tự động gửi)
+    JSN-SR04T-V3 VCC -> 5V
+    JSN-SR04T-V3 GND -> GND
+
+  Nếu dùng Arduino Uno/Nano: dùng SoftwareSerial thay cho Serial2.
+*/
+
 #include <Arduino.h>
+#include "SoftUART.h"
 
-#define NUM_SENSORS 1
-const int SENSOR_RX_PIN = 43;
+// ----------------- CẤU HÌNH -----------------
+#define SENSOR_RX_PIN 38 // chân RX (đọc mềm) của ESP32 nối vào TX sensor
+#define SENSOR_TX_PIN -1 // không dùng (sensor tự gửi khung, không cần trigger)
+#define SENSOR_BAUD 9600
 
-// Sử dụng Hardware UART 1 của ESP32-S3
-HardwareSerial SensorSerial(1);
+const float H_SENSOR_MM = 1500.0; // độ cao lắp sensor so với đáy (mm) = 1.5m
 
-// Cấu trúc dữ liệu chứa kết quả đo của cảm biến
-typedef struct
+// Giới hạn hợp lệ của JSN-SR04T-V3 (theo datasheet, có thể chỉnh theo thực tế)
+const float DIST_MIN_MM = 250.0;
+const float DIST_MAX_MM = 7500.0;
+
+// Tham số Kalman filter (chỉnh theo thực nghiệm của bạn)
+float Q = 4.0;   // process noise: mực nước biến đổi chậm -> để nhỏ (mm^2)
+float R = 100.0; // measurement noise: nhiễu cảm biến (mm^2), càng rung/gợn sóng thì để cao hơn
+
+// ----------------- BIẾN KALMAN -----------------
+float kf_x = 0;    // ước lượng khoảng cách hiện tại (state)
+float kf_p = 1000; // ước lượng sai số (covariance), khởi tạo lớn vì chưa tin tưởng
+bool kf_initialized = false;
+
+SoftUART SensorSerial; // UART mềm (bit-bang), tránh trùng chân UART0 (GPIO43/44)
+
+// ----------------- HÀM KALMAN 1D -----------------
+float kalmanUpdate(float measurement)
 {
-    uint16_t distances_mm[NUM_SENSORS];
-    bool valid[NUM_SENSORS];
-    uint32_t timestamp;
-} SensorBatch_t;
-
-// Queue giao tiếp giữa Core 1 (Đọc sensor) và Core 0 (Hiển thị / Ứng dụng)
-QueueHandle_t xSensorQueue = NULL;
-
-// Handle Task
-TaskHandle_t TaskSensorHandle = NULL;
-TaskHandle_t TaskDisplayHandle = NULL;
-
-// Hàm đọc 1 gói tin 4-byte từ Hardware UART
-bool readHardwareUartSensorPacket(HardwareSerial &serial, uint16_t *distance_mm, uint32_t timeoutMs)
-{
-    uint32_t startMs = millis();
-    while (millis() - startMs < timeoutMs)
+    if (!kf_initialized)
     {
-        if (serial.available() >= 4)
-        {
-            if (serial.peek() == 0xFF)
-            {
-                uint8_t buf[4];
-                serial.readBytes(buf, 4);
-                uint8_t calcChecksum = (buf[0] + buf[1] + buf[2]) & 0xFF;
-                if (calcChecksum == buf[3])
-                {
-                    *distance_mm = (buf[1] << 8) | buf[2];
-                    return true;
-                }
-            }
-            else
-            {
-                serial.read(); // Loại bỏ byte rác để đồng bộ lại khung truyền
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(2));
+        // Lần đầu tiên: khởi tạo state = giá trị đo đầu tiên
+        kf_x = measurement;
+        kf_p = R;
+        kf_initialized = true;
+        return kf_x;
     }
-    return false;
+
+    // ---- Bước dự đoán (predict) ----
+    // Mô hình tĩnh: giả định khoảng cách không đổi nhiều giữa 2 lần đo
+    float x_pred = kf_x;
+    float p_pred = kf_p + Q;
+
+    // ---- Bước cập nhật (update) ----
+    float K = p_pred / (p_pred + R); // Kalman gain
+    kf_x = x_pred + K * (measurement - x_pred);
+    kf_p = (1.0 - K) * p_pred;
+
+    return kf_x;
 }
 
-// Hàm tính giá trị Trung Vị (Median) của 5 mẫu
-uint16_t getMedian5(uint16_t samples[5])
+// ----------------- ĐỌC KHUNG UART TỪ CẢM BIẾN -----------------
+// Trả về true nếu đọc được 1 khung hợp lệ, giá trị mm ghi vào distance_mm
+bool readSensorFrame(float &distance_mm)
 {
-    uint16_t sorted[5];
-    for (int i = 0; i < 5; i++)
+    uint16_t raw_mm = 0;
+    // readSensorPacket() tự tìm header 0xFF, đọc đủ 4 byte và kiểm checksum
+    if (!SensorSerial.readSensorPacket(&raw_mm, 100))
     {
-        sorted[i] = samples[i];
+        return false;
     }
 
-    // Sắp xếp Bubble Sort 5 phần tử
-    for (int i = 0; i < 4; i++)
+    // Lọc theo khoảng đo hợp lệ của sensor
+    if (raw_mm < DIST_MIN_MM || raw_mm > DIST_MAX_MM)
     {
-        for (int j = i + 1; j < 5; j++)
-        {
-            if (sorted[i] > sorted[j])
-            {
-                uint16_t temp = sorted[i];
-                sorted[i] = sorted[j];
-                sorted[j] = temp;
-            }
-        }
+        return false;
     }
-    return sorted[2]; // Trả về phần tử ở vị trí chính giữa (Index 2)
-}
 
-// --- TASK 1: ĐỌC CẢM BIẾN & LỌC TRUNG VỊ 5 MẪU (KỊCH BẢN MẶT NƯỚC - CORE 1) ---
-void TaskReadSensorHardwareUART(void *pvParameters)
-{
-    Serial.printf("[RTOS] TaskReadSensorHardwareUART (CORE %d, Hardware UART1 RX GPIO %d, Median-5 Filter)\n",
-                  xPortGetCoreID(), SENSOR_RX_PIN);
-
-    // Khởi tạo Hardware UART 1: Baudrate 9600, RX=GPIO 43, TX=-1
-    SensorSerial.begin(9600, SERIAL_8N1, SENSOR_RX_PIN, -1);
-
-    SensorBatch_t batch;
-    uint16_t samples[5];
-    int validCount = 0;
-    int attemptCount = 0;
-
-    for (;;)
-    {
-        batch.timestamp = millis();
-        validCount = 0;
-        attemptCount = 0;
-
-        // Thu thập 5 mẫu hợp lệ liên tiếp (Tối đa 10 lần thử)
-        while (validCount < 5 && attemptCount < 10)
-        {
-            attemptCount++;
-            uint16_t dist_mm = 0;
-            bool ok = readHardwareUartSensorPacket(SensorSerial, &dist_mm, 100);
-            if (ok && dist_mm > 0)
-            {
-                samples[validCount] = dist_mm;
-                validCount++;
-            }
-            vTaskDelay(pdMS_TO_TICKS(50)); // Giãn cách 150ms giữa các lần thu mẫu để tránh chồng xung dội
-        }
-
-        if (validCount >= 5)
-        {
-            uint16_t median_dist_mm = getMedian5(samples);
-            batch.distances_mm[0] = median_dist_mm;
-            batch.valid[0] = true;
-        }
-        else
-        {
-            batch.distances_mm[0] = 0;
-            batch.valid[0] = false;
-        }
-
-        // Đẩy kết quả sau khi lọc trung vị vào Queue
-        if (xSensorQueue != NULL)
-        {
-            xQueueSend(xSensorQueue, &batch, 0);
-        }
-
-        // vTaskDelay(pdMS_TO_TICKS(200));
-    }
-}
-
-// --- TASK 2: HIỂN THỊ DỮ LIỆU NON-BLOCKING (CỐ ĐỊNH TRÊN CORE 0) ---
-void TaskDisplayMain(void *pvParameters)
-{
-    Serial.printf("[RTOS] TaskDisplayMain đang chạy trên CORE %d\n", xPortGetCoreID());
-
-    SensorBatch_t receivedBatch;
-
-    for (;;)
-    {
-        if (xQueueReceive(xSensorQueue, &receivedBatch, pdMS_TO_TICKS(1000)) == pdTRUE)
-        {
-            Serial.printf("\n--- [TIME: %6d ms] KẾT QUẢ ĐỌC LỌC TRUNG VỊ 5 MẪU (GPIO %d) ---\n",
-                          receivedBatch.timestamp, SENSOR_RX_PIN);
-
-            if (receivedBatch.valid[0])
-            {
-                float cm = receivedBatch.distances_mm[0] / 10.0f;
-                Serial.printf("  Sensor 1 (GPIO %2d): %4d mm (%5.1f cm) [MEDIAN 5 OK]\n",
-                              SENSOR_RX_PIN, receivedBatch.distances_mm[0], cm);
-            }
-            else
-            {
-                Serial.printf("  Sensor 1 (GPIO %2d): TIMEOUT / CHECKSUM ERROR [FAIL]\n",
-                              SENSOR_RX_PIN);
-            }
-            Serial.println("--------------------------------------------------");
-        }
-    }
+    distance_mm = (float)raw_mm;
+    return true;
 }
 
 void setup()
 {
     Serial.begin(115200);
-    while (!Serial && millis() < 2000)
-        ;
+    SensorSerial.begin(SENSOR_RX_PIN, SENSOR_TX_PIN, SENSOR_BAUD);
 
-    Serial.println("\n=======================================================");
-    Serial.println("  HỆ THỐNG ĐO MẶT NƯỚC - LỌC TRUNG VỊ 5 MẪU (MEDIAN 5)");
-    Serial.println("  Hardware UART1 RX Pin: GPIO 43                        ");
-    Serial.println("  Core 1: TaskReadSensorHardwareUART (Median Filter)     ");
-    Serial.println("  Core 0: TaskDisplayMain (FreeRTOS Queue)               ");
-    Serial.println("=======================================================\n");
-
-    xSensorQueue = xQueueCreate(5, sizeof(SensorBatch_t));
-
-    if (xSensorQueue == NULL)
-    {
-        Serial.println("[LỖI] Không thể tạo FreeRTOS Queue!");
-        return;
-    }
-
-    xTaskCreatePinnedToCore(
-        TaskReadSensorHardwareUART,
-        "TaskReadSensorHardwareUART",
-        4096,
-        NULL,
-        5,
-        &TaskSensorHandle,
-        1 // CORE 1
-    );
-
-    xTaskCreatePinnedToCore(
-        TaskDisplayMain,
-        "TaskDisplayMain",
-        4096,
-        NULL,
-        1,
-        &TaskDisplayHandle,
-        0 // CORE 0
-    );
+    Serial.println("Bat dau do muc nuoc voi JSN-SR04T-V3 (UART Mode 1) + Kalman filter");
 }
 
 void loop()
 {
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    float distance_raw_mm;
+
+    if (readSensorFrame(distance_raw_mm))
+    {
+        // Áp Kalman filter lên khoảng cách đo được (trước khi tính mực nước)
+        float distance_filtered_mm = kalmanUpdate(distance_raw_mm);
+
+        // Tính mực nước = độ cao lắp sensor - khoảng cách đến mặt nước
+        // float water_level_mm = H_SENSOR_MM - distance_filtered_mm;
+        float water_level_mm = distance_filtered_mm;
+
+        if (water_level_mm < 0)
+            water_level_mm = 0; // tránh giá trị âm do nhiễu
+
+        // float water_level_raw_mm = H_SENSOR_MM - distance_raw_mm;
+        float water_level_raw_mm = distance_raw_mm;
+
+        Serial.print("Raw dist: ");
+        Serial.print(distance_raw_mm, 1);
+        Serial.print(" mm | Filtered dist: ");
+        Serial.print(distance_filtered_mm, 1);
+        // Serial.print(" mm | Water level (raw): ");
+        // Serial.print(water_level_raw_mm, 1);
+        // Serial.print(" mm | Water level (Kalman): ");
+        // Serial.print(water_level_mm, 1);
+        // Serial.println(" mm");
+    }
+
+    delay(20); // tốc độ vòng lặp đọc, sensor tự gửi khung ~100-140ms/lần
 }
