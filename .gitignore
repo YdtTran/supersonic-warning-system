@@ -7,6 +7,9 @@ sdkconfig.old
 **/sdkconfig.old
 sdkconfig.ci
 **/sdkconfig.ci
+# PlatformIO per-env sdkconfig snapshot (auto-generated from sdkconfig)
+sdkconfig.yolo_uno
+**/sdkconfig.yolo_uno
 
 # ==========================================
 # ESP-IDF Component Manager

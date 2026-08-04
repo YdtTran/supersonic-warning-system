@@ -15,8 +15,8 @@ struct SensorPinConfig
 };
 
 static const SensorPinConfig SENSOR_PINS[] = {
-    {5, 6},  // Cảm biến 0
-    {47, 7}, // Cảm biến 1
+    {5, 6}, // Cảm biến 0
+    {7, 8}, // Cảm biến 1
 };
 
 static const size_t SENSOR_COUNT = 2;
@@ -30,11 +30,11 @@ static const float SOUND_SPEED_CM_PER_US = 0.0343f;
 
 // Phạm vi thực tế theo tài liệu JSN-SR04T
 static const float MIN_DISTANCE_CM = 25.0f;
-static const float MAX_DISTANCE_CM = 450.0f;
+static const float MAX_DISTANCE_CM = 500.0f;
 
-// 4.5 m cần khoảng 26.2 ms cho sóng đi và về.
-// Đặt timeout 35 ms để có khoảng an toàn.
-static const uint32_t ECHO_TIMEOUT_US = 35000;
+// 5 m cần khoảng 29.2 ms cho sóng đi và về.
+// Đặt timeout 40 ms để có khoảng an toàn.
+static const uint32_t ECHO_TIMEOUT_US = 40000;
 
 // Thời gian chờ Echo trở về LOW trước lần đo mới
 static const uint32_t ECHO_LOW_TIMEOUT_US = 5000;
@@ -81,3 +81,26 @@ static const float JUMP_TOLERANCE_RATIO = 0.10f;
 
 // Sau nhiều lần đọc lỗi liên tiếp sẽ reset bộ lọc
 static const int RESET_AFTER_INVALID = 15;
+
+// =========================================================
+// CẤU HÌNH BUZZER CẢNH BÁO
+// Buzzer gắn trực tiếp trên sensor-node, kêu theo khoảng cách gần
+// nhất trong số các cảm biến - cùng ngưỡng WARNING/DANGER với rule
+// chain CoreIoT (server tính "relay"/"warning_status" cùng công thức
+// để đồng bộ, xem cloud/coreiot/rule_chain/supersonic_rule_chain.json).
+// =========================================================
+
+static const uint8_t BUZZER_PIN = 48;
+
+// <= ngưỡng này: WARNING (cùng điều kiện relay ON phía server)
+static const float BUZZER_WARNING_DISTANCE_CM = 50.0f;
+
+// < ngưỡng này: DANGER
+static const float BUZZER_DANGER_DISTANCE_CM = 20.0f;
+
+// Chu kỳ kêu: WARNING 3s/lần, DANGER 1s/lần
+static const uint32_t BUZZER_WARNING_PERIOD_MS = 3000;
+static const uint32_t BUZZER_DANGER_PERIOD_MS = 1000;
+
+// Độ dài mỗi tiếng kêu (bật còi)
+static const uint32_t BUZZER_BEEP_ON_MS = 120;

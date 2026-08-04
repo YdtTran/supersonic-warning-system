@@ -5,8 +5,15 @@
 
 #include "ui_dashboard.h"
 #include "sensor_model.h"
+#include "coreiot_client.h"
 #include "lvgl.h"
 #include "esp_log.h"
+#include "esp_wifi.h"
+#include "esp_system.h"
+#include "esp_chip_info.h"
+#include "esp_flash.h"
+#include "esp_app_desc.h"
+#include "esp_timer.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -49,9 +56,21 @@ static lv_obj_t *s_lbl_mqtt_status;
 static lv_obj_t *s_lbl_hazard_overall;
 static lv_obj_t *s_lbl_crossing_risk;
 static lv_obj_t *s_lbl_relay_state;
+static lv_obj_t *s_lbl_buzzer_state;
 static lv_obj_t *s_lbl_sys_wifi;
 static lv_obj_t *s_lbl_sys_mqtt;
 static lv_obj_t *s_lbl_sys_device;
+static lv_obj_t *s_lbl_sys_device_id;
+static lv_obj_t *s_lbl_sys_broker;
+static lv_obj_t *s_lbl_sys_token;
+static lv_obj_t *s_lbl_sys_fw_version;
+static lv_obj_t *s_lbl_sys_idf_version;
+static lv_obj_t *s_lbl_sys_build;
+static lv_obj_t *s_lbl_sys_flash;
+static lv_obj_t *s_lbl_sys_heap;
+static lv_obj_t *s_lbl_sys_min_heap;
+static lv_obj_t *s_lbl_sys_uptime;
+static lv_timer_t *s_sys_info_timer;
 static bool s_alarm_muted = false;
 
 static sensor_arc_t s_arcs[SENSOR_MODEL_COUNT];
@@ -333,6 +352,10 @@ static lv_obj_t *build_right_sidebar(lv_obj_t *parent)
     lv_label_set_text(s_lbl_relay_state, "RELAY: -- | --");
     lv_obj_set_style_text_color(s_lbl_relay_state, lv_color_hex(COLOR_TEXT), 0);
 
+    s_lbl_buzzer_state = lv_label_create(sidebar);
+    lv_label_set_text(s_lbl_buzzer_state, "BUZZER: --");
+    lv_obj_set_style_text_color(s_lbl_buzzer_state, lv_color_hex(COLOR_TEXT), 0);
+
     lv_obj_t *legend_hdr = lv_label_create(sidebar);
     lv_label_set_text(legend_hdr, "LEGEND");
     lv_obj_set_style_text_color(legend_hdr, lv_color_hex(COLOR_ACCENT), 0);
@@ -376,6 +399,79 @@ static void tab_system_cb(lv_event_t *e)
     set_active_tab(false);
 }
 
+static lv_obj_t *make_sys_column(lv_obj_t *parent)
+{
+    lv_obj_t *col = lv_obj_create(parent);
+    lv_obj_set_size(col, LV_PCT(50), LV_PCT(100));
+    lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(col, 0, 0);
+    lv_obj_set_style_pad_all(col, 8, 0);
+    lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    return col;
+}
+
+static void make_sys_section_header(lv_obj_t *parent, const char *text)
+{
+    lv_obj_t *hdr = lv_label_create(parent);
+    lv_label_set_text(hdr, text);
+    lv_obj_set_style_text_color(hdr, lv_color_hex(COLOR_ACCENT), 0);
+    lv_obj_set_style_pad_top(hdr, 12, 0);
+}
+
+static lv_obj_t *make_sys_info_row(lv_obj_t *parent, const char *text)
+{
+    lv_obj_t *lbl = lv_label_create(parent);
+    lv_label_set_text(lbl, text);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_TEXT), 0);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(lbl, LV_PCT(100));
+    return lbl;
+}
+
+// Masks a secret so only the first/last few characters are visible, e.g.
+// "lyeFK1raLOPmjx7bEApw" -> "lyeF...bEApw".
+static void mask_secret(const char *secret, char *out, size_t out_size)
+{
+    size_t len = strlen(secret);
+    if (len <= 8) {
+        snprintf(out, out_size, "%s", secret);
+        return;
+    }
+    snprintf(out, out_size, "%.4s...%s", secret, secret + len - 4);
+}
+
+static void format_uptime(char *out, size_t out_size)
+{
+    int64_t uptime_s = esp_timer_get_time() / 1000000;
+    int hours = (int)(uptime_s / 3600);
+    int mins = (int)((uptime_s % 3600) / 60);
+    int secs = (int)(uptime_s % 60);
+    snprintf(out, out_size, "Uptime: %02d:%02d:%02d", hours, mins, secs);
+}
+
+static void refresh_system_info(void)
+{
+    if (s_lbl_sys_heap) {
+        lv_label_set_text_fmt(s_lbl_sys_heap, "Free heap: %u KB", (unsigned)(esp_get_free_heap_size() / 1024));
+    }
+    if (s_lbl_sys_min_heap) {
+        lv_label_set_text_fmt(s_lbl_sys_min_heap, "Min free heap: %u KB", (unsigned)(esp_get_minimum_free_heap_size() / 1024));
+    }
+    if (s_lbl_sys_uptime) {
+        char buf[32];
+        format_uptime(buf, sizeof(buf));
+        lv_label_set_text(s_lbl_sys_uptime, buf);
+    }
+}
+
+static void sys_info_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    refresh_system_info();
+}
+
 static lv_obj_t *build_system_page(lv_obj_t *parent)
 {
     lv_obj_t *page = lv_obj_create(parent);
@@ -383,26 +479,71 @@ static lv_obj_t *build_system_page(lv_obj_t *parent)
     lv_obj_set_style_bg_color(page, lv_color_hex(COLOR_BG), 0);
     lv_obj_set_style_bg_opa(page, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(page, 0, 0);
-    lv_obj_set_style_pad_all(page, 24, 0);
-    lv_obj_set_flex_flow(page, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(page, 16, 0);
+    lv_obj_set_style_pad_column(page, 8, 0);
+    lv_obj_remove_flag(page, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(page, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(page, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-    lv_obj_t *title = lv_label_create(page);
-    lv_label_set_text(title, "SYSTEM STATUS");
-    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ACCENT), 0);
+    lv_obj_t *col_left = make_sys_column(page);
+    lv_obj_t *col_right = make_sys_column(page);
 
-    s_lbl_sys_device = lv_label_create(page);
-    lv_label_set_text(s_lbl_sys_device, "Device: ESP32-S3 Collision Dashboard");
-    lv_obj_set_style_text_color(s_lbl_sys_device, lv_color_hex(COLOR_TEXT), 0);
-    lv_obj_set_style_pad_top(s_lbl_sys_device, 12, 0);
+    // --- Left column: device, network, cloud keys ---
+    make_sys_section_header(col_left, "DEVICE");
+    esp_chip_info_t chip_info;
+    esp_chip_info(&chip_info);
+    char device_buf[64];
+    snprintf(device_buf, sizeof(device_buf), "ESP32-S3, %d cores, rev v%d.%d",
+             chip_info.cores, chip_info.revision / 100, chip_info.revision % 100);
+    s_lbl_sys_device = make_sys_info_row(col_left, device_buf);
 
-    s_lbl_sys_wifi = lv_label_create(page);
-    lv_label_set_text(s_lbl_sys_wifi, "Wi-Fi: disconnected");
-    lv_obj_set_style_text_color(s_lbl_sys_wifi, lv_color_hex(COLOR_TEXT), 0);
+    make_sys_section_header(col_left, "NETWORK");
+    s_lbl_sys_wifi = make_sys_info_row(col_left, "Wi-Fi: disconnected");
+    s_lbl_sys_mqtt = make_sys_info_row(col_left, "MQTT/CoreIoT: down");
 
-    s_lbl_sys_mqtt = lv_label_create(page);
-    lv_label_set_text(s_lbl_sys_mqtt, "MQTT/CoreIoT: down");
-    lv_obj_set_style_text_color(s_lbl_sys_mqtt, lv_color_hex(COLOR_TEXT), 0);
+    make_sys_section_header(col_left, "CLOUD KEYS");
+    char device_id_buf[64];
+    snprintf(device_id_buf, sizeof(device_id_buf), "Device ID: %s", COREIOT_DEVICE_ID);
+    s_lbl_sys_device_id = make_sys_info_row(col_left, device_id_buf);
+
+    char broker_buf[64];
+    snprintf(broker_buf, sizeof(broker_buf), "Broker: %s", COREIOT_MQTT_BROKER_URI);
+    s_lbl_sys_broker = make_sys_info_row(col_left, broker_buf);
+
+    char token_masked[32];
+    mask_secret(COREIOT_MQTT_ACCESS_TOKEN, token_masked, sizeof(token_masked));
+    char token_buf[48];
+    snprintf(token_buf, sizeof(token_buf), "Access token: %s", token_masked);
+    s_lbl_sys_token = make_sys_info_row(col_left, token_buf);
+
+    // --- Right column: firmware, storage ---
+    make_sys_section_header(col_right, "FIRMWARE");
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+    char fw_buf[96];
+    snprintf(fw_buf, sizeof(fw_buf), "App: %s v%s", app_desc->project_name, app_desc->version);
+    s_lbl_sys_fw_version = make_sys_info_row(col_right, fw_buf);
+
+    char idf_buf[48];
+    snprintf(idf_buf, sizeof(idf_buf), "ESP-IDF: %s", esp_get_idf_version());
+    s_lbl_sys_idf_version = make_sys_info_row(col_right, idf_buf);
+
+    char build_buf[64];
+    snprintf(build_buf, sizeof(build_buf), "Built: %s %s", app_desc->date, app_desc->time);
+    s_lbl_sys_build = make_sys_info_row(col_right, build_buf);
+
+    s_lbl_sys_uptime = make_sys_info_row(col_right, "Uptime: 00:00:00");
+
+    make_sys_section_header(col_right, "STORAGE");
+    uint32_t flash_size_bytes = 0;
+    esp_flash_get_size(NULL, &flash_size_bytes);
+    char flash_buf[48];
+    snprintf(flash_buf, sizeof(flash_buf), "Flash: %u MB", (unsigned)(flash_size_bytes / (1024 * 1024)));
+    s_lbl_sys_flash = make_sys_info_row(col_right, flash_buf);
+
+    s_lbl_sys_heap = make_sys_info_row(col_right, "Free heap: -- KB");
+    s_lbl_sys_min_heap = make_sys_info_row(col_right, "Min free heap: -- KB");
+
+    refresh_system_info();
 
     return page;
 }
@@ -452,6 +593,8 @@ void ui_dashboard_init(void)
 
     lv_obj_add_event_cb(s_tab_btn_collision, tab_collision_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(s_tab_btn_system, tab_system_cb, LV_EVENT_CLICKED, NULL);
+
+    s_sys_info_timer = lv_timer_create(sys_info_timer_cb, 2000, NULL);
 
     ESP_LOGI(TAG, "Collision dashboard UI initialized");
 }
@@ -535,8 +678,15 @@ void ui_dashboard_update_sensor(uint8_t sensor_id, uint16_t dist_cm)
 
 void ui_dashboard_set_iot_status(bool is_connected, const char *ip)
 {
+    wifi_ap_record_t ap_info;
+    bool have_ap_info = is_connected && (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
+    const char *ssid = have_ap_info ? (const char *)ap_info.ssid : NULL;
+
     if (s_lbl_wifi_status) {
-        if (is_connected && ip) {
+        if (is_connected && ssid) {
+            lv_label_set_text_fmt(s_lbl_wifi_status, LV_SYMBOL_WIFI " %s", ssid);
+            lv_obj_set_style_text_color(s_lbl_wifi_status, lv_color_hex(COLOR_SAFE), 0);
+        } else if (is_connected && ip) {
             lv_label_set_text_fmt(s_lbl_wifi_status, LV_SYMBOL_WIFI " %s", ip);
             lv_obj_set_style_text_color(s_lbl_wifi_status, lv_color_hex(COLOR_SAFE), 0);
         } else {
@@ -551,10 +701,19 @@ void ui_dashboard_set_iot_status(bool is_connected, const char *ip)
     }
 
     if (s_lbl_sys_wifi) {
-        lv_label_set_text_fmt(s_lbl_sys_wifi, "Wi-Fi: %s", is_connected ? (ip ? ip : "connected") : "disconnected");
+        if (is_connected) {
+            lv_label_set_text_fmt(s_lbl_sys_wifi, "Wi-Fi: %s | %s | RSSI %d dBm",
+                                   ssid ? ssid : "connected",
+                                   ip ? ip : "--",
+                                   have_ap_info ? ap_info.rssi : 0);
+        } else {
+            lv_label_set_text(s_lbl_sys_wifi, "Wi-Fi: disconnected");
+        }
+        lv_obj_set_style_text_color(s_lbl_sys_wifi, is_connected ? lv_color_hex(COLOR_SAFE) : lv_color_hex(COLOR_TEXT), 0);
     }
     if (s_lbl_sys_mqtt) {
         lv_label_set_text_fmt(s_lbl_sys_mqtt, "MQTT/CoreIoT: %s", is_connected ? "up" : "down");
+        lv_obj_set_style_text_color(s_lbl_sys_mqtt, is_connected ? lv_color_hex(COLOR_SAFE) : lv_color_hex(COLOR_TEXT), 0);
     }
 }
 
@@ -583,4 +742,14 @@ void ui_dashboard_set_relay_state(bool relay_on, const char *warning_status)
         }
     }
     lv_obj_set_style_text_color(s_lbl_relay_state, lv_color_hex(color), 0);
+}
+
+void ui_dashboard_set_buzzer_state(bool buzzer_on)
+{
+    if (!s_lbl_buzzer_state) {
+        return;
+    }
+
+    lv_label_set_text_fmt(s_lbl_buzzer_state, "BUZZER: %s", buzzer_on ? "ON" : "OFF");
+    lv_obj_set_style_text_color(s_lbl_buzzer_state, buzzer_on ? lv_color_hex(COLOR_CAUTION) : lv_color_hex(COLOR_TEXT), 0);
 }

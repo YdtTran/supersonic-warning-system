@@ -30,6 +30,7 @@
 static TaskHandle_t s_sensorTaskHandle = nullptr;
 static TaskHandle_t s_appTaskHandle = nullptr;
 static TaskHandle_t s_networkTaskHandle = nullptr;
+static TaskHandle_t s_buzzerTaskHandle = nullptr;
 
 static CoreiotClient s_coreiotClient;
 
@@ -97,21 +98,22 @@ static void sensorTask(void *pvParameters)
                 // -----------------------------------------------------
                 s_invalidCount[i]++;
 
-                float stableCm;
-                bool hasStable = s_filters[i].getStable(stableCm);
-
-                Serial.printf(
-                    "[S%u] REJECT: %s | Pulse: %lu us | Raw: %s | Stable: %s | Invalid: %d\n",
-                    (unsigned)i,
-                    reading.error,
-                    (unsigned long)reading.durationUs,
-                    distanceToText(reading.durationUs > 0, reading.distanceCm).c_str(),
-                    distanceToText(hasStable, stableCm).c_str(),
-                    s_invalidCount[i]);
+                // Serial log tắt để tăng hiệu năng (tránh chặn task đo mỗi
+                // chu kỳ). Bật lại khi cần debug.
+                // float stableCm;
+                // bool hasStable = s_filters[i].getStable(stableCm);
+                // Serial.printf(
+                //     "[S%u] REJECT: %s | Pulse: %lu us | Raw: %s | Stable: %s | Invalid: %d\n",
+                //     (unsigned)i,
+                //     reading.error,
+                //     (unsigned long)reading.durationUs,
+                //     distanceToText(reading.durationUs > 0, reading.distanceCm).c_str(),
+                //     distanceToText(hasStable, stableCm).c_str(),
+                //     s_invalidCount[i]);
 
                 if (s_invalidCount[i] >= RESET_AFTER_INVALID)
                 {
-                    Serial.printf("[S%u] FILTER RESET: mat tin hieu qua lau\n", (unsigned)i);
+                    // Serial.printf("[S%u] FILTER RESET: mat tin hieu qua lau\n", (unsigned)i);
                     s_filters[i].reset();
                     sharedStateSet(i, 0.0f, false);
                     s_invalidCount[i] = 0;
@@ -126,16 +128,18 @@ static void sensorTask(void *pvParameters)
 
                 FilterResult result = s_filters[i].process(reading.distanceCm);
 
-                Serial.printf(
-                    "[S%u] RAW: %lu us | Raw: %s | Cluster: %s | Votes: %d | Spread: %s | Stable: %s | %s\n",
-                    (unsigned)i,
-                    (unsigned long)reading.durationUs,
-                    distanceToText(true, reading.distanceCm).c_str(),
-                    distanceToText(result.hasCluster, result.clusterCm).c_str(),
-                    result.clusterCount,
-                    distanceToText(result.hasSpread, result.clusterSpreadCm).c_str(),
-                    distanceToText(result.hasOutput, result.outputCm).c_str(),
-                    result.status);
+                // Serial log tắt để tăng hiệu năng (tránh chặn task đo mỗi
+                // chu kỳ). Bật lại khi cần debug.
+                // Serial.printf(
+                //     "[S%u] RAW: %lu us | Raw: %s | Cluster: %s | Votes: %d | Spread: %s | Stable: %s | %s\n",
+                //     (unsigned)i,
+                //     (unsigned long)reading.durationUs,
+                //     distanceToText(true, reading.distanceCm).c_str(),
+                //     distanceToText(result.hasCluster, result.clusterCm).c_str(),
+                //     result.clusterCount,
+                //     distanceToText(result.hasSpread, result.clusterSpreadCm).c_str(),
+                //     distanceToText(result.hasOutput, result.outputCm).c_str(),
+                //     result.status);
 
                 sharedStateSet(i, result.outputCm, result.hasOutput);
             }
@@ -178,6 +182,77 @@ static void appTask(void *pvParameters)
         digitalWrite(LED_BUILTIN, anyClose ? HIGH : LOW);
 
         vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
+// =========================================================
+// BUZZER TASK
+// Đồng bộ với "relay"/"warning_status" phía CoreIoT (cùng ngưỡng
+// khoảng cách): lấy khoảng cách gần nhất trong các cảm biến đã lọc,
+// kêu 3s/lần khi WARNING (20-50cm), 1s/lần khi DANGER (<20cm), tắt
+// hẳn khi không có vật cản trong tầm. Non-blocking, dùng millis() để
+// không chặn task khác.
+// =========================================================
+
+static void buzzerTask(void *pvParameters)
+{
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
+
+    uint32_t lastBeepStartMs = 0;
+    bool beeping = false;
+
+    for (;;)
+    {
+        float nearestCm = 0.0f;
+        bool hasNearest = false;
+
+        for (size_t i = 0; i < SENSOR_COUNT; ++i)
+        {
+            float distanceCm;
+            if (sharedStateGet(i, distanceCm) && (!hasNearest || distanceCm < nearestCm))
+            {
+                nearestCm = distanceCm;
+                hasNearest = true;
+            }
+        }
+
+        uint32_t period = 0;
+        if (hasNearest && nearestCm > 0.0f)
+        {
+            if (nearestCm < BUZZER_DANGER_DISTANCE_CM)
+            {
+                period = BUZZER_DANGER_PERIOD_MS;
+            }
+            else if (nearestCm <= BUZZER_WARNING_DISTANCE_CM)
+            {
+                period = BUZZER_WARNING_PERIOD_MS;
+            }
+        }
+
+        uint32_t now = millis();
+
+        if (period == 0)
+        {
+            if (beeping)
+            {
+                digitalWrite(BUZZER_PIN, LOW);
+                beeping = false;
+            }
+        }
+        else if (!beeping && (now - lastBeepStartMs >= period))
+        {
+            digitalWrite(BUZZER_PIN, HIGH);
+            beeping = true;
+            lastBeepStartMs = now;
+        }
+        else if (beeping && (now - lastBeepStartMs >= BUZZER_BEEP_ON_MS))
+        {
+            digitalWrite(BUZZER_PIN, LOW);
+            beeping = false;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
@@ -226,8 +301,8 @@ static void networkTask(void *pvParameters)
                     snprintf(payload, sizeof(payload), "{\"right_front\":%.1f}", rightFrontCm);
                 }
 
-                bool ok = s_coreiotClient.publishTelemetry(payload);
-                Serial.printf("[NET] Publish %s: %s\n", ok ? "OK" : "FAILED", payload);
+                s_coreiotClient.publishTelemetry(payload);
+                // Serial.printf("[NET] Publish %s: %s\n", ok ? "OK" : "FAILED", payload);
             }
         }
 

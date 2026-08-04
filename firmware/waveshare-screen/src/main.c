@@ -15,15 +15,24 @@
 #include "coreiot_client.h"
 #include "cJSON.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 static const char *TAG = "collision_dashboard";
 
 static const char *k_sensor_json_keys[SENSOR_MODEL_COUNT] = {
     "front", "rear", "left_front", "left_rear", "right_front", "right_rear",
 };
 
+// Callers here run on the Wi-Fi event loop task / esp-mqtt task, not the LVGL
+// task, so a bounded timeout is used instead of an infinite wait: if the LVGL
+// task is ever stalled, this must not block network/mqtt event processing
+// forever.
+#define LV_LOCK_TIMEOUT_TICKS pdMS_TO_TICKS(100)
+
 static void on_wifi_status(bool is_connected, const char *ip)
 {
-    if (esp_lv_adapter_lock(-1) == ESP_OK) {
+    if (esp_lv_adapter_lock(LV_LOCK_TIMEOUT_TICKS) == ESP_OK) {
         ui_dashboard_set_iot_status(is_connected, ip);
         esp_lv_adapter_unlock();
     }
@@ -31,7 +40,7 @@ static void on_wifi_status(bool is_connected, const char *ip)
 
 static void on_mqtt_status(bool is_connected)
 {
-    if (esp_lv_adapter_lock(-1) == ESP_OK) {
+    if (esp_lv_adapter_lock(LV_LOCK_TIMEOUT_TICKS) == ESP_OK) {
         ui_dashboard_set_iot_status(is_connected, NULL);
         esp_lv_adapter_unlock();
     }
@@ -57,7 +66,7 @@ static void on_mqtt_data(const char *topic, int topic_len, const char *payload, 
 
     cJSON *values = cJSON_GetObjectItem(json, "values");
 
-    if (esp_lv_adapter_lock(-1) == ESP_OK) {
+    if (esp_lv_adapter_lock(LV_LOCK_TIMEOUT_TICKS) == ESP_OK) {
         for (int i = 0; i < SENSOR_MODEL_COUNT; i++) {
             cJSON *item = cJSON_GetObjectItem(json, k_sensor_json_keys[i]);
             if (!item && values) {
@@ -82,10 +91,39 @@ static void on_mqtt_data(const char *topic, int topic_len, const char *payload, 
             ui_dashboard_set_relay_state(relay_on, warn_str);
         }
 
+        cJSON *buzzer_item = cJSON_GetObjectItem(json, "buzzer");
+        if (!buzzer_item && values) {
+            buzzer_item = cJSON_GetObjectItem(values, "buzzer");
+        }
+        if (buzzer_item && cJSON_IsString(buzzer_item)) {
+            bool buzzer_on = strcmp(buzzer_item->valuestring, "ON") == 0;
+            ui_dashboard_set_buzzer_state(buzzer_on);
+        }
+
         esp_lv_adapter_unlock();
     }
 
     cJSON_Delete(json);
+}
+
+// =========================================================
+// NETWORK TASK
+// Khởi tạo Wi-Fi/MQTT tới CoreIoT (esp_wifi + esp-mqtt, xem
+// components/coreiot_client) trong một FreeRTOS task riêng, tách
+// khỏi task LVGL - cùng phong cách "networkTask" tách biệt như
+// firmware/sensor-node. coreiot_client_init() không blocking: nó
+// chỉ đăng ký event handler rồi trả về ngay, toàn bộ kết nối/publish
+// tiếp theo chạy nền qua esp_event + task nội bộ của esp-mqtt.
+// =========================================================
+
+static void networkTask(void *pvParameters)
+{
+    (void)pvParameters;
+
+    coreiot_client_set_callbacks(on_wifi_status, on_mqtt_status, on_mqtt_data);
+    coreiot_client_init();
+
+    vTaskDelete(NULL);
 }
 
 void app_main(void)
@@ -133,6 +171,12 @@ void app_main(void)
         esp_lv_adapter_unlock();
     }
 
-    coreiot_client_set_callbacks(on_wifi_status, on_mqtt_status, on_mqtt_data);
-    coreiot_client_init();
+    xTaskCreatePinnedToCore(
+        networkTask,
+        "NetworkTask",
+        4096,
+        NULL,
+        1,
+        NULL,
+        0);
 }
