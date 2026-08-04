@@ -12,8 +12,8 @@
 // trên CoreIoT.
 // =========================================================
 
-#define COREIOT_WIFI_SSID "ACLAB"
-#define COREIOT_WIFI_PASS "ACLAB2023"
+#define COREIOT_WIFI_SSID "HCMUT-MEETING"
+#define COREIOT_WIFI_PASS "hcmut@meeting"
 
 #define COREIOT_MQTT_HOST "app.coreiot.io"
 #define COREIOT_MQTT_PORT 1883

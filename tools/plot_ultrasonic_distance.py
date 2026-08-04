@@ -41,17 +41,19 @@ def parse_arguments():
     parser.add_argument("--port", type=str, default="COM12", help="Com port name (Default: COM12)")
     parser.add_argument("--baud", type=int, default=115200, help="Baud rate (Default: 115200 for ESP32)")
     parser.add_argument("--window", type=int, default=100, help="Number of data points on graph window (Default: 100)")
-    parser.add_argument("--max-dist", type=float, default=None, help="Y-axis ban đầu (mm) trước khi có đủ dữ liệu để tự scale. Bỏ trống để tool tự chọn.")
-    parser.add_argument("--min-dist", type=float, default=None, help="Y-axis ban đầu (mm), tương tự --max-dist")
+    parser.add_argument("--max-dist", type=float, default=None, help="Y-axis ban đầu (cm) trước khi có đủ dữ liệu để tự scale. Bỏ trống để tool tự chọn.")
+    parser.add_argument("--min-dist", type=float, default=None, help="Y-axis ban đầu (cm), tương tự --max-dist")
     return parser.parse_args()
 class RealtimePlotter:
     def __init__(self, port, baud, window_size, min_dist, max_dist):
         self.port = port
         self.baud = baud
         self.window_size = window_size
-        # Khung nhìn Y hiện tại: sẽ được tool tự nới/co theo giá trị cảm biến (autoscale)
+        # Khung nhìn Y hiện tại (cm): sẽ được tool tự nới theo giá trị lớn nhất ghi nhận được (autoscale)
         self.view_min = min_dist if min_dist is not None else 0.0
-        self.view_max = max_dist if max_dist is not None else 500.0
+        self.view_max = max_dist if max_dist is not None else 50.0
+        # Giá trị lớn nhất ghi nhận được trong khung thời gian (time frame) đang hiển thị (cm)
+        self.max_seen = None
         self.ani = None
         # Đệm chứa dữ liệu thời gian thực
         self.timestamps = deque(maxlen=window_size)
@@ -73,12 +75,12 @@ class RealtimePlotter:
         self.fig, self.ax = plt.subplots(figsize=(10, 6))
         self.fig.canvas.manager.set_window_title("Hệ Thống Giám Sát Khoảng Cách Siêu Âm - Live Plotter")
         # Đường biểu diễn dữ liệu (Line Chart): Raw (nhiễu) vs Filtered (Kalman)
-        self.line_raw, = self.ax.plot([], [], color='#FF6E40', linewidth=1.0, alpha=0.6, label='Raw dist (mm)')
-        self.line_filtered, = self.ax.plot([], [], color='#00E5FF', linewidth=2.0, label='Filtered dist - Kalman (mm)')
+        self.line_raw, = self.ax.plot([], [], color='#FF6E40', linewidth=1.0, alpha=0.6, label='Raw dist (cm)')
+        self.line_filtered, = self.ax.plot([], [], color='#00E5FF', linewidth=2.0, label='Filtered dist - Kalman (cm)')
         # Thiết lập nhãn & khung đồ thị
         self.ax.set_title("ĐỒ THỊ KHOẢNG CÁCH THỜI GIAN THỰC (JSN-SR04T / ESP32-S3)", fontsize=14, fontweight='bold', pad=15, color='#00E5FF')
         self.ax.set_xlabel(f"Mẫu gần nhất (0-{window_size}, mới nhất bên phải)", fontsize=11, color='#B0BEC5')
-        self.ax.set_ylabel("Khoảng cách (mm)", fontsize=11, color='#B0BEC5')
+        self.ax.set_ylabel("Khoảng cách (cm)", fontsize=11, color='#B0BEC5')
         self.ax.set_xlim(0, window_size - 1)
         self.ax.set_ylim(self.view_min, self.view_max)
         self.ax.grid(True, linestyle='--', alpha=0.3, color='#455A64')
@@ -92,25 +94,26 @@ class RealtimePlotter:
         """
         Phân tích chuỗi log từ main.cpp:
         "Raw dist: 1234.5 mm | Filtered dist: 1230.2 mm"
-        Trả về (raw_mm, filtered_mm); giá trị nào không tìm thấy trả về None.
+        Trả về (raw_cm, filtered_cm); giá trị nào không tìm thấy trả về None.
+        Mọi giá trị đều được quy đổi về cm để hiển thị.
         """
         raw_val = None
         filtered_val = None
         match_raw = re.search(r'Raw dist:\s*(\d+(?:\.\d+)?)\s*mm', line_str, re.IGNORECASE)
         if match_raw:
-            raw_val = float(match_raw.group(1))
+            raw_val = float(match_raw.group(1)) / 10.0
         match_filtered = re.search(r'Filtered dist:\s*(\d+(?:\.\d+)?)\s*mm', line_str, re.IGNORECASE)
         if match_filtered:
-            filtered_val = float(match_filtered.group(1))
-        # Fallback: dòng chỉ có 1 giá trị "XX mm" hoặc "XX cm" (đổi ra mm) -> coi là raw
+            filtered_val = float(match_filtered.group(1)) / 10.0
+        # Fallback: dòng chỉ có 1 giá trị "XX mm" hoặc "XX cm" -> coi là raw
         if raw_val is None and filtered_val is None:
             match_cm = re.search(r'(\d+(?:\.\d+)?)\s*cm', line_str, re.IGNORECASE)
             if match_cm:
-                raw_val = float(match_cm.group(1)) * 10.0
+                raw_val = float(match_cm.group(1))
             else:
                 match_mm = re.search(r'(\d+(?:\.\d+)?)\s*mm', line_str, re.IGNORECASE)
                 if match_mm:
-                    raw_val = float(match_mm.group(1))
+                    raw_val = float(match_mm.group(1)) / 10.0
         return raw_val, filtered_val
     def read_data(self):
         """Đọc dòng dữ liệu mới nhất từ UART."""
@@ -133,25 +136,21 @@ class RealtimePlotter:
                 pass
     def _autoscale_y(self, all_values):
         """
-        Tự động scale trục Y theo giá trị cảm biến thực tế (kiểu oscilloscope):
-        - Chỉ nới/co khung nhìn khi dữ liệu tràn ra ngoài hoặc khung đang quá thừa,
-          tránh đổi ylim liên tục mỗi frame (giữ blit mượt).
+        Scale trục Y (thanh đo, đơn vị cm) theo giá trị LỚN NHẤT trong khung thời gian
+        (time frame / window) đang hiển thị trên đồ thị (self.window_size mẫu gần nhất):
+        - Trục Y luôn bắt đầu từ 0.
+        - Đỉnh trục Y = max hiện tại trong window * 1.1 (đệm 10%), cập nhật lại theo
+          từng frame nên khi giá trị lớn nhất trôi ra khỏi window, thanh đo sẽ co lại theo.
         """
         if not all_values:
             return
-        data_min = min(all_values)
         data_max = max(all_values)
-        data_range = data_max - data_min
-        pad = max(data_range * 0.2, 20.0)  # tối thiểu 20mm đệm để không dính sát mép
-        desired_min = data_min - pad
-        desired_max = data_max + pad
-        view_range = self.view_max - self.view_min
-        desired_range = desired_max - desired_min
-        overflow = data_min < self.view_min or data_max > self.view_max
-        too_loose = desired_range > 0 and view_range > desired_range * 2.5
-        if overflow or too_loose:
-            self.view_min = desired_min
-            self.view_max = desired_max
+        new_view_max = max(data_max * 1.1, 1.0)
+        # Chỉ set lại ylim khi thay đổi đáng kể để tránh giật hình mỗi frame
+        if self.max_seen is None or abs(new_view_max - self.view_max) > self.view_max * 0.03:
+            self.max_seen = data_max
+            self.view_min = 0.0
+            self.view_max = new_view_max
             self.ax.set_ylim(self.view_min, self.view_max)
     def update_plot(self, frame):
         """Hàm cập nhật đồ thị cho Matplotlib FuncAnimation (chỉ vẽ lại phần dữ liệu đổi - blit)."""
@@ -175,10 +174,11 @@ class RealtimePlotter:
                 avg_val = sum(valid_filtered) / len(valid_filtered)
                 info_str = (
                     f"CHỈ SỐ THỜI GIAN THỰC (Kalman):\n"
-                    f" ► Hiện tại  : {current_val:7.1f} mm\n"
-                    f" ► Trung bình: {avg_val:7.1f} mm\n"
-                    f" ► Thấp nhất : {min_val:7.1f} mm\n"
-                    f" ► Cao nhất  : {max_val:7.1f} mm\n"
+                    f" ► Hiện tại  : {current_val:7.1f} cm\n"
+                    f" ► Trung bình: {avg_val:7.1f} cm\n"
+                    f" ► Thấp nhất : {min_val:7.1f} cm\n"
+                    f" ► Cao nhất  : {max_val:7.1f} cm\n"
+                    f" ► Max ghi nhận: {self.max_seen:7.1f} cm\n"
                     f" ► Tổng mẫu  : {self.total_samples} (Lỗi: {self.failed_samples})"
                 )
                 self.info_text.set_text(info_str)
