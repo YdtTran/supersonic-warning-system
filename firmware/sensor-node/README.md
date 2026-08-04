@@ -49,8 +49,20 @@ firmware/sensor-node/
 | `sensorTask` | 1 | 2 | Đo + lọc từng cảm biến mỗi `MEASURE_INTERVAL_MS`, ghi vào `SharedState` |
 | `appTask` | 1 | 1 | Ví dụ dùng `SharedState` (bật LED khi vật ở gần) |
 | `networkTask` | 0 | 1 | Kết nối WiFi/MQTT, publish `SharedState` lên CoreIoT mỗi `COREIOT_PUBLISH_INTERVAL_MS` |
+| `buzzerTask` | — | — | Đọc khoảng cách gần nhất từ `SharedState`, điều khiển buzzer (GPIO `BUZZER_PIN`) cục bộ |
 
 `networkTask` chạy trên core 0 (tách khỏi core 1) để việc kết nối lại WiFi/MQTT hoặc publish không ảnh hưởng timing đo cảm biến (Echo timeout tính bằng micro-giây).
+
+## Buzzer cảnh báo (cục bộ, không qua cloud)
+
+`buzzerTask` (`src/main.cpp`) đọc khoảng cách gần nhất trong `SharedState` và điều khiển trực tiếp buzzer vật lý gắn ở `BUZZER_PIN` (GPIO 48, xem `include/Config.h`) — **không** round-trip qua CoreIoT/rule-chain, để giữ độ trễ phản hồi thấp nhất cho cảnh báo va chạm:
+
+| Ngưỡng | Khoảng cách | Nhịp beep |
+| :--- | :--- | :--- |
+| WARNING | `<= BUZZER_WARNING_DISTANCE_CM` (50cm) | mỗi 3000ms (`BUZZER_WARNING_PERIOD_MS`) |
+| DANGER | `< BUZZER_DANGER_DISTANCE_CM` (20cm) | mỗi 1000ms (`BUZZER_DANGER_PERIOD_MS`) |
+
+Mỗi lần beep kéo dài `BUZZER_BEEP_ON_MS` = 120ms. Rule-chain CoreIoT (`cloud/coreiot/rule_chain/supersonic_rule_chain.json`) tính thêm field `buzzer` (mirror cùng điều kiện với `relay`) chỉ để `waveshare-screen` hiển thị lại trạng thái — không điều khiển buzzer thật.
 
 ## Build & Flash (PlatformIO)
 

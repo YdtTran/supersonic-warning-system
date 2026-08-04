@@ -42,24 +42,26 @@ supersonic-sensor-ACLAB/
 ├── .agents/                           # Thư mục chứa Custom Skills cho AI Agents
 │   └── skills/
 │       ├── cross_device_reconfig/     # Skill tự động quét & cấu hình project trên máy mới
-│       └── esp32_screen_debug/        # Skill chẩn đoán lỗi hiển thị, I2C driver & trích xuất log
-├── tools/                             # Công cụ kiểm thử MQTT với môi trường Conda 'mqtt-coreiot'
-│   └── test_mqtt_coreiot.py           # Script mô phỏng phát dữ liệu xe & kiểm tra kết nối CoreIoT
-├── firmware/                          # Firmware chính thức (production)
-│   ├── sensor-node/                   # [Project 1] Firmware cảm biến JSN-SR04T (Port mặc định: COM8)
-│   │   ├── CMakeLists.txt
-│   │   ├── sdkconfig.defaults
-│   │   ├── build_and_flash.bat        # Script biên dịch & nạp firmware nhanh
-│   │   └── main/                      # Mã nguồn đọc JSN-SR04T & phát dữ liệu xe lên CoreIoT
-│   └── waveshare-screen/              # [Project 2] Firmware màn hình cảm ứng LVGL 7" (Port mặc định: COM9)
-│       ├── CMakeLists.txt
-│       ├── sdkconfig.defaults
-│       ├── build_and_flash.bat        # Script biên dịch & nạp firmware nhanh
-│       └── main/                      # Mã nguồn BSP & Giao diện LVGL nhận dữ liệu từ CoreIoT Rule-Chain
+│       ├── esp32_screen_debug/        # Skill chẩn đoán lỗi hiển thị, I2C driver & trích xuất log
+│       └── lvgl_v9_warning_display/   # Skill tra cứu kiến trúc LVGL v9 / pipeline UI cảnh báo
+├── tools/                             # Công cụ kiểm thử MQTT & đọc/vẽ dữ liệu UART
+│   ├── test_mqtt_coreiot.py           # Script mô phỏng phát dữ liệu xe & kiểm tra kết nối CoreIoT
+│   └── plot_ultrasonic_distance.py    # Vẽ đồ thị real-time giá trị khoảng cách đọc qua UART
+├── firmware/                          # Firmware chính thức (production, PlatformIO cho cả 2 board)
+│   ├── sensor-node/                   # [Project 1] JSN-SR04T x2 (S3/S5) + buzzer cảnh báo (Port mặc định: COM8)
+│   │   ├── platformio.ini             # board = yolo_uno, framework = arduino
+│   │   ├── build_and_flash.bat        # Script biên dịch & nạp firmware nhanh (pio run/upload/monitor)
+│   │   └── src/, include/             # sensorTask/networkTask/buzzerTask (FreeRTOS trên Arduino core)
+│   └── waveshare-screen/              # [Project 2] Dashboard va chạm LVGL 7" (Port mặc định: COM9)
+│       ├── platformio.ini             # board = yolo_uno, framework = espidf (thuần, không Arduino)
+│       ├── CMakeLists.txt, sdkconfig.defaults, partitions.csv
+│       ├── build_and_flash.bat        # Script biên dịch & nạp firmware nhanh (pio run, không idf.py trực tiếp)
+│       └── src/, components/          # BSP + sensor_model/coreiot_client/ui_dashboard (layout PlatformIO ESP-IDF)
 ├── prototypes/                        # Firmware thử nghiệm / nghiên cứu (chưa production)
-│   └── water-level-uart/              # PlatformIO – đo mực nước JSN-SR04T-V3 UART + Kalman/Median-5 filter
+│   ├── water-level-uart/              # PlatformIO – đo mực nước JSN-SR04T-V3 UART + Kalman/Median-5 filter
+│   └── pulse-read-prototype/          # PlatformIO – đọc xung Trig/Echo trực tiếp GPIO (SR04M-2 Mode 3)
 ├── cloud/
-│   └── coreiot/rule_chain/            # Cấu hình Rule-Chain CoreIoT (ThingsBoard)
+│   └── coreiot/rule_chain/            # Cấu hình Rule-Chain CoreIoT (ThingsBoard) — tính cả field "buzzer"
 ├── reference/                         # Submodule mã nguồn tham khảo (vendor)
 │   ├── lcd-example/                   # Waveshare ESP32-S3 Touch LCD 7 official examples
 │   └── esp-faq/                       # ESP-IDF FAQ tham khảo
@@ -67,6 +69,8 @@ supersonic-sensor-ACLAB/
     ├── architecture/                  # Tài liệu kiến trúc & review
     └── logs/                          # Nhật ký triển khai (version logs) gộp từ mọi component
 ```
+
+> **Lưu ý kiến trúc:** `sensor-node` dùng `framework = arduino` (Arduino + FreeRTOS), còn `waveshare-screen` dùng `framework = espidf` **thuần** — cả hai đều PlatformIO-hoá (`platformio.ini`, `board = yolo_uno`) nhưng lý do và giới hạn kỹ thuật của lựa chọn này (tổ hợp `arduino, espidf` không build được do bị khoá ở ESP-IDF 4.4.7 trong khi driver màn hình cần ≥5.5) được ghi chi tiết tại [docs/logs/waveshare-screen_ARDUINO_REFACTOR_LOG.md](docs/logs/waveshare-screen_ARDUINO_REFACTOR_LOG.md).
 
 ---
 
@@ -93,18 +97,19 @@ supersonic-sensor-ACLAB/
 - **Hệ điều hành**: Windows 10/11 (khuyên dùng PowerShell 7 hoặc Windows PowerShell).
 - **Môi trường Python Test MQTT**: Conda environment `mqtt-coreiot` tại `D:\miniconda\envs\mqtt-coreiot` (Tích hợp sẵn `paho-mqtt`).
 
-#### B. Toolchain ESP-IDF (Bắt buộc)
-Dự án được xây dựng và kiểm thử trên **ESP-IDF v6.0.2** (hoặc v5.3+):
-- **ESP-IDF Framework**: Cài đặt tại `C:\Espressif\frameworks\esp-idf-v6.0.2` hoặc `E:\esp\v6.0.2\esp-idf`.
-- **ESP-IDF Tools Path**: `C:\Espressif\tools`.
-- **Trình biên dịch & Build System**: `xtensa-esp32s3-elf-gcc`, `CMake`, `Ninja` (được tự động cấu hình qua ESP-IDF Installer).
-- **PowerShell Profile**: `C:\Espressif\tools\Microsoft.v6.0.2.PowerShell_profile.ps1`.
+#### B. Toolchain PlatformIO (Bắt buộc cho cả 2 firmware)
+Cả `firmware/sensor-node` và `firmware/waveshare-screen` đều build bằng **PlatformIO** (`pio run -e yolo_uno`, gọi qua `build_and_flash.bat`), khác `framework` cho từng board:
+- **`sensor-node`**: `framework = arduino` — PlatformIO tự tải toolchain Arduino-ESP32 tương ứng.
+- **`waveshare-screen`**: `framework = espidf` **thuần** (không Arduino) — driver LCD/LVGL 9.1/GT911 cần ESP-IDF ≥5.5, PlatformIO tự tải bản ESP-IDF phù hợp (đã xác nhận build thành công với ESP-IDF 6.0.1) trong lần build đầu tiên, khác với ESP-IDF cài độc lập qua trình cài đặt Espressif (nếu có, tại `C:\Espressif\frameworks\...`, không bắt buộc cho build PlatformIO).
+- Cài PlatformIO Core: `pip install platformio` hoặc dùng PlatformIO IDE/VSCode extension.
 
 #### C. Các Thư viện Quản lý Tự động (Managed Components)
-Các thư viện phụ thuộc của dự án được tự động tải về qua **ESP-IDF Component Manager** trong lần biên dịch đầu tiên (`main/idf_component.yml`):
-- **`lvgl/lvgl`** (v8.x/v9.x): Thư viện đồ họa Open-source GUI.
+Các thư viện phụ thuộc của `waveshare-screen` được tự động tải về qua **ESP-IDF Component Manager** trong lần biên dịch đầu tiên (`src/idf_component.yml`):
+- **`lvgl/lvgl`** (v9.1): Thư viện đồ họa Open-source GUI.
 - **`espressif/esp_lvgl_adapter`**: Bộ adapter kết nối LVGL với ESP-IDF.
 - **`espressif/esp_lcd_touch_gt911`**: Driver điều khiển cảm ứng GT911 qua bus I2C master.
+
+Còn `sensor-node` khai báo `lib_deps` (PubSubClient, ...) trực tiếp trong `platformio.ini`, tải qua PlatformIO Library Manager.
 
 ---
 
@@ -135,27 +140,33 @@ python .agents/skills/cross_device_reconfig/scripts/scan_env.py
 
 Mỗi dự án đều tích hợp script `build_and_flash.bat` hỗ trợ biên dịch tăng tiến (Incremental Build) cực nhanh.
 
-### A. Mô-đun Cảm biến JSN-SR04T (`firmware/sensor-node`)
+### A. Mô-đun Cảm biến JSN-SR04T (`firmware/sensor-node`, PlatformIO + Arduino)
+
 ```cmd
 cd firmware/sensor-node
 
-:: Biên dịch dự án
+:: Biên dịch dự án (pio run -e yolo_uno)
 build_and_flash.bat build
 
 :: Biên dịch, Nạp firmware & Mở Serial Monitor (Cổng COM8)
 build_and_flash.bat all COM8
 ```
 
-### B. Mô-đun Màn hình (`firmware/waveshare-screen`)
+Board này đọc 2 cảm biến S3 (`left_front`)/S5 (`right_front`), publish MQTT 2Hz, và điều khiển **buzzer vật lý** (GPIO48) cục bộ theo ngưỡng WARNING (3s/lần, <50cm)/DANGER (1s/lần, <20cm) — không qua round-trip cloud để giữ độ trễ thấp. Chi tiết: [firmware/sensor-node/README.md](firmware/sensor-node/README.md).
+
+### B. Mô-đun Màn hình (`firmware/waveshare-screen`, PlatformIO + ESP-IDF thuần)
+
 ```cmd
 cd firmware/waveshare-screen
 
-:: Biên dịch (tự động tải LVGL trong lần đầu)
+:: Biên dịch (pio run -e yolo_uno; tự tải LVGL/ESP-IDF managed_components trong lần đầu)
 build_and_flash.bat build
 
 :: Biên dịch, Nạp firmware & Mở Serial Monitor (Cổng COM9)
 build_and_flash.bat all COM9
 ```
+
+Board này dùng `framework = espidf` thuần (không Arduino) do driver LCD/LVGL 9.1/GT911 yêu cầu ESP-IDF ≥5.5, trong khi tổ hợp `arduino, espidf` của PlatformIO chỉ có ESP-IDF 4.4.7. Chi tiết quyết định: [docs/logs/waveshare-screen_ARDUINO_REFACTOR_LOG.md](docs/logs/waveshare-screen_ARDUINO_REFACTOR_LOG.md).
 
 ---
 

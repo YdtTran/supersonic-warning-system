@@ -49,6 +49,14 @@ Datasheet cảm biến JSN-SR04T: góc quét (FOV) **75°**, tầm đo hiệu d�
 
 Ngưỡng cảnh báo: `>100cm` = An toàn (xanh lá), `30-100cm` = Cẩn thận (vàng), `<30cm` = Nguy hiểm (đỏ, nhấp nháy).
 
+> **Trạng thái hiện tại**: chỉ `firmware/sensor-node` (S3 `left_front` / S5 `right_front`) đã có phần cứng và publish dữ liệu thật lên CoreIoT. UI dashboard vẫn dựng đủ layout cho 6 cảm biến/4 zone để sẵn sàng mở rộng, nhưng 4 zone còn lại (front/rear/left_rear/right_rear) hiện không nhận dữ liệu cho tới khi có board tương ứng.
+
+---
+
+## 🔊 Buzzer & Trạng thái Relay (đồng bộ với `sensor-node`)
+
+Rule-chain CoreIoT (`cloud/coreiot/rule_chain/supersonic_rule_chain.json`) tính thêm field `buzzer` (mirror cùng điều kiện với `relay`, `ON`/`OFF`) trong attribute JSON gửi xuống. Buzzer **vật lý** được điều khiển cục bộ ngay trên `sensor-node` (GPIO48, không round-trip qua cloud, để giữ độ trễ thấp) — field `buzzer` ở đây chỉ dùng để **hiển thị lại** trạng thái đó trên màn hình: `main.c:on_mqtt_data()` đọc key `buzzer` từ payload và gọi `ui_dashboard_set_buzzer_state()`, hiện dòng `BUZZER: ON/OFF` ở sidebar trái.
+
 ---
 
 ## 🌐 CoreIoT MQTT Integration
@@ -57,27 +65,34 @@ Firmware kết nối MQTT đến server **CoreIoT (ThingsBoard)** qua component 
 
 - **MQTT Broker**: `app.coreiot.io` (Port `1883`)
 - **Device Access Token**: định nghĩa trong `components/coreiot_client/include/coreiot_client.h` (`COREIOT_MQTT_ACCESS_TOKEN`)
+- **Wi-Fi SSID**: `COREIOT_WIFI_SSID` trong cùng file (hiện là mạng `HCMUT-MEETING`, cùng SSID với `sensor-node`) — hiển thị lại trong header và tab SYSTEM của UI.
 - **Telemetry topic**: `v1/devices/me/telemetry`
-- **Định dạng dữ liệu vào**: JSON với 6 khóa `front`, `rear`, `left_front`, `left_rear`, `right_front`, `right_rear` (khoảng cách cm), ví dụ `{"front":120,"rear":180,"left_front":85,"left_rear":150,"right_front":25,"right_rear":200}` — parse trong `main.c:on_mqtt_data()` và đẩy vào `ui_dashboard_update_sensor()`.
+- **Định dạng dữ liệu vào**: JSON với các khóa cảm biến (`left_front`, `right_front`, ... — xem bảng Sensor Layout ở trên) cộng thêm `relay`/`buzzer` (`ON`/`OFF`), ví dụ `{"left_front":85.3,"right_front":142.0,"relay":"OFF","buzzer":"OFF"}` — parse trong `main.c:on_mqtt_data()` và đẩy vào `ui_dashboard_update_sensor()` / `ui_dashboard_set_buzzer_state()`.
 
 ---
 
 ## 📁 Cấu trúc Mô-đun Dự án (Project Architecture)
 
+PlatformIO-hoá (`platformio.ini`, `board = yolo_uno`) nhưng dùng `framework = espidf` **thuần** (không Arduino) — xem lý do và giới hạn kỹ thuật tại [docs/logs/waveshare-screen_ARDUINO_REFACTOR_LOG.md](../../docs/logs/waveshare-screen_ARDUINO_REFACTOR_LOG.md). PlatformIO's ESP-IDF builder luôn đòi hỏi thư mục gốc `src/` (không phải `main/` kiểu ESP-IDF chuẩn), nên thư mục `main/` cũ đã được đổi tên thành `src/`, nội dung giữ nguyên.
+
 ```text
 waveshare-screen/
+├── platformio.ini              # env:yolo_uno, framework = espidf, board_build.partitions = partitions.csv
+├── boards/yolo_uno.json        # Board definition (copy từ firmware/sensor-node)
 ├── CMakeLists.txt              # Cấu hình biên dịch dự án root (-Wno-attributes)
 ├── sdkconfig.defaults          # Cấu hình tối ưu PSRAM, FreeRTOS & LVGL
-├── build_and_flash.bat         # Script biên dịch tăng tiến (Incremental Build) & nạp tự động
+├── partitions.csv              # Bảng phân vùng flash
+├── build_and_flash.bat         # Script gọi pio run/pio device monitor (build/flash/monitor/all/clean)
 ├── README.md                   # Tài liệu hướng dẫn sử dụng dự án màn hình hiển thị
 ├── components/                 # Module hóa theo components/ ESP-IDF
 │   ├── sensor_model/            # Struct thread-safe (mutex) lưu 6 khoảng cách + góc lắp
-│   ├── coreiot_client/          # Wrapper Wi-Fi STA + MQTT CoreIoT (callback-based, tách khỏi UI)
-│   └── ui_dashboard/            # Toàn bộ giao diện LVGL Collision Dashboard
-└── main/
+│   ├── coreiot_client/          # Wrapper Wi-Fi STA + MQTT CoreIoT (esp_wifi/esp-mqtt, callback-based, tách khỏi UI)
+│   └── ui_dashboard/            # Toàn bộ giao diện LVGL Collision Dashboard (tab COLLISION + SYSTEM)
+└── src/                         # PlatformIO PROJECT_SRC_DIR (trước đây là main/, đổi tên do PlatformIO yêu cầu)
     ├── CMakeLists.txt          # Đăng ký main + liên kết components
     ├── idf_component.yml       # Quản lý dependency (esp_lvgl_adapter, esp_lcd_touch_gt911, cjson, mqtt)
-    ├── main.c                  # app_main(): khởi tạo BSP, LVGL adapter, dashboard, CoreIoT client
+    ├── main.c                  # app_main(): khởi tạo BSP, LVGL adapter, dashboard;
+    │                           # networkTask riêng (core 0, FreeRTOS) gọi coreiot_client_init()
     └── bsp/                    # Board Support Package (Màn hình & Cảm ứng)
         ├── waveshare_rgb_lcd_port.h # Khai báo chân GPIO, timing 16MHz & hàm driver
         └── waveshare_rgb_lcd_port.c # Driver RGB panel, I2C master bus & CH422G
@@ -100,12 +115,15 @@ waveshare-screen/
 
 **`components/ui_dashboard/include/ui_dashboard.h`**
 
-- `void ui_dashboard_init(void)` — dựng toàn bộ layout 800x480 (header, tab Collision/System, sidebar trái/phải, canvas xe 2D + 6 arc cảm biến).
+- `void ui_dashboard_init(void)` — dựng toàn bộ layout 800x480 (header, tab COLLISION/SYSTEM, sidebar trái/phải, canvas xe 2D + 6 arc cảm biến).
 - `void ui_dashboard_update_sensor(uint8_t sensor_id, uint16_t dist_cm)` — cập nhật 1 dòng sidebar + màu/nhấp nháy arc + re-evaluate hazard.
-- `void ui_dashboard_set_iot_status(bool is_connected, const char *ip)` — cập nhật badge Wi-Fi/MQTT trên header và tab System.
+- `void ui_dashboard_set_iot_status(bool is_connected, const char *ip)` — cập nhật badge Wi-Fi/MQTT trên header và tab SYSTEM (Wi-Fi SSID/RSSI, trạng thái MQTT).
 - `void ui_dashboard_set_hazard_warning(bool is_pedestrian_crossing_risk)` — ép cảnh báo "CROSSING TRAFFIC HAZARD" độc lập với logic tự động.
+- `void ui_dashboard_set_buzzer_state(bool buzzer_on)` — cập nhật dòng `BUZZER: ON/OFF` ở sidebar, phản ánh trạng thái buzzer vật lý trên `sensor-node`.
 
-Tất cả hàm `ui_dashboard_*` phải được gọi trong `esp_lv_adapter_lock()/unlock()` vì LVGL không thread-safe.
+Tab **SYSTEM** hiển thị đầy đủ: device ID, CoreIoT broker + access token (che một phần), firmware version, ESP-IDF version (`esp_get_idf_version()`), build timestamp, flash size (`esp_flash_get_size`), free/min-free heap, và uptime — tự refresh định kỳ.
+
+Tất cả hàm `ui_dashboard_*` phải được gọi trong `esp_lv_adapter_lock()/unlock()` vì LVGL không thread-safe. Các callback WiFi/MQTT (chạy trên `networkTask`, khác task LVGL) dùng `esp_lv_adapter_lock(100)` (timeout 100ms) thay vì `esp_lv_adapter_lock(-1)` (chờ vô hạn) — tránh deadlock toàn hệ thống nếu task LVGL bị kẹt.
 
 ---
 
@@ -150,7 +168,7 @@ I (1038) GT911: TouchPad_ID:0x39,0x31,0x31
 I (1046) esp_lvgl:adapter: LVGL adapter initialized successfully
 I (1087) collision_dashboard: Initializing Collision-Avoidance Dashboard
 I (1175) ui_dashboard: Collision dashboard UI initialized
-I (1360) coreiot_client: Wi-Fi STA started, connecting to SSID: ACLAB...
+I (1360) coreiot_client: Wi-Fi STA started, connecting to SSID: HCMUT-MEETING...
 ```
 Cảnh báo `alloc partial draw buffer ... failed` / `tear mode 4 setup failed, falling back to allocated buffers` là non-fatal (adapter tự động fallback sang buffer cấp phát thường).
 
