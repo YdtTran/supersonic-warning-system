@@ -54,6 +54,16 @@ void ui_dashboard_set_hazard_warning(bool is_pedestrian_crossing_risk);
  */
 void ui_dashboard_set_relay_state(bool relay_on, const char *warning_status);
 
+/**
+ * @brief Display the sensor-node's physical buzzer state (field "buzzer" from the telemetry/
+ *        attribute JSON, computed alongside "relay" by the CoreIoT rule chain). The buzzer
+ *        itself is driven locally on the sensor-node from live distance readings; this only
+ *        mirrors that state on the dashboard. Must be called with the LVGL lock held.
+ *
+ * @param buzzer_on true if the sensor-node reports buzzer == "ON"
+ */
+void ui_dashboard_set_buzzer_state(bool buzzer_on);
+
 #ifdef __cplusplus
 }
 #endif
