@@ -1,0 +1,298 @@
+\documentclass[a4paper,12pt]{article}
+
+% ---------- Encoding / Vietnamese ----------
+\usepackage[utf8]{inputenc}
+\usepackage[T5,T1]{fontenc}
+\usepackage[vietnamese]{babel}
+
+% ---------- Layout ----------
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,calc}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{caption}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!50!black,
+    citecolor=blue!50!black,
+    pdftitle={Bao cao ky thuat - He thong canh bao va cham JSN-SR04T va CoreIoT},
+    pdfauthor={ACLAB}
+}
+
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Hệ thống cảnh báo va chạm — JSN-SR04T \& CoreIoT}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{\textbf{Báo cáo Kỹ thuật\\[4pt]
+\large Hệ thống Cảnh báo Va chạm bằng Cảm biến Siêu âm JSN-SR04T\\
+kết nối nền tảng IoT CoreIoT}}
+\author{ACLAB}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent
+Báo cáo này mô tả trạng thái hiện tại của hệ thống nhúng cảnh báo va chạm sử dụng cảm biến siêu âm chống nước JSN-SR04T, vi điều khiển ESP32-S3, nền tảng IoT CoreIoT (ThingsBoard) và màn hình cảm ứng LVGL. Nội dung tập trung vào phần cứng đang sử dụng, công cụ/framework và lý do lựa chọn, các API chính được gọi trong firmware, cũng như các chức năng đã hoàn thiện và hướng phát triển tiếp theo của hệ thống ở trạng thái hiện hành.
+
+\vspace{4pt}
+\noindent\textbf{Mã nguồn:} \url{https://github.com/YdtTran/supersonic-warning-system}
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% =====================================================================
+\section{Giới thiệu và phạm vi hệ thống hiện tại}
+
+Hệ thống phát hiện vật cản/xe cộ ở khoảng cách gần bằng cảm biến siêu âm, gửi dữ liệu lên nền tảng đám mây CoreIoT để xử lý ngưỡng cảnh báo, sau đó định tuyến kết quả xuống màn hình hiển thị và còi cảnh báo cục bộ.
+
+Ở trạng thái hiện tại, hệ thống đã lắp đặt và vận hành ổn định trên phần cứng thật với \textbf{2 cảm biến siêu âm} (vị trí trước-trái và trước-phải của xe). Kiến trúc phần cứng và phần mềm được thiết kế hỗ trợ tối đa \textbf{6 cảm biến} bao quanh xe; việc mở rộng lên đầy đủ 6 cảm biến hiện đang chờ bổ sung phần cứng và nằm trong hướng phát triển tiếp theo (Mục~\ref{sec:future}), không phải là giới hạn của kiến trúc.
+
+% =====================================================================
+\section{Kiến trúc hệ thống hiện hành}
+
+Hình~\ref{fig:dataflow} mô tả luồng dữ liệu hiện hành của hệ thống: cảm biến siêu âm truyền tín hiệu Trig/Echo tới node cảm biến, node cảm biến lọc nhiễu và gửi khoảng cách qua MQTT lên CoreIoT, Rule-Chain trên CoreIoT tính toán trạng thái cảnh báo và định tuyến xuống node màn hình để hiển thị.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.1cm,
+    box/.style={rectangle, rounded corners, draw=black!70, thick,
+                 minimum width=6.6cm, minimum height=1cm,
+                 align=center, fill=blue!6},
+    lbl/.style={font=\footnotesize\itshape, align=center}
+]
+\node[box] (sensor) {Cảm biến siêu âm JSN-SR04T\\\footnotesize (2 cảm biến hiện tại, kiến trúc hỗ trợ tối đa 6)};
+\node[box, below=of sensor] (node1) {ESP32-S3 Sensor Node\\\footnotesize \href{https://github.com/YdtTran/supersonic-warning-system/tree/main/firmware/sensor-node}{\code{firmware/sensor-node}} — đo, lọc, còi báo cục bộ};
+\node[box, below=of node1] (cloud) {CoreIoT Cloud (ThingsBoard)\\\footnotesize Rule-Chain tính ngưỡng WARNING/DANGER};
+\node[box, below=of cloud] (node2) {ESP32-S3 Waveshare Screen Node\\\footnotesize \href{https://github.com/YdtTran/supersonic-warning-system/tree/main/firmware/waveshare-screen}{\code{firmware/waveshare-screen}} — dashboard LVGL 800x480};
+
+\draw[-{Latex[length=2.5mm]}, thick] (sensor) -- node[lbl, right] {Trig/Echo GPIO} (node1);
+\draw[-{Latex[length=2.5mm]}, thick] (node1) -- node[lbl, right] {Wi-Fi MQTT\\telemetry} (cloud);
+\draw[-{Latex[length=2.5mm]}, thick] (cloud) -- node[lbl, right] {MQTT Shared\\Attributes} (node2);
+\end{tikzpicture}
+\caption{Luồng dữ liệu hiện hành của hệ thống.}
+\label{fig:dataflow}
+\end{figure}
+
+% =====================================================================
+\section{Phần cứng đang sử dụng}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}p{3.4cm}p{10.5cm}@{}}
+\toprule
+\textbf{Thành phần} & \textbf{Mô tả} \\
+\midrule
+Vi điều khiển & Board \textbf{Yolo:Uno}, dựa trên \textbf{ESP32-S3-WROOM-1} (Dual-Core 240MHz, Wi-Fi/BLE, PSRAM Octal). \\
+Cảm biến khoảng cách & \textbf{JSN-SR04T} — cảm biến siêu âm chống nước, đầu dò tách rời board mạch. \\
+Màn hình hiển thị & \textbf{Waveshare ESP32-S3 Touch LCD 7"} — panel RGB $800\times480$, cảm ứng dung kháng \textbf{GT911} (I2C 400kHz), IO-expander \textbf{CH422G} (I2C, địa chỉ \code{0x24}/\code{0x38}) điều khiển backlight, reset cảm ứng, CS thẻ SD và MUX CAN. \\
+Cảnh báo cục bộ & Còi buzzer trên chân GPIO48 của Sensor Node, phản hồi tức thời không qua vòng lặp cloud. \\
+\bottomrule
+\end{tabular}
+\caption{Danh mục phần cứng chính đang sử dụng.}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{image.png}
+\caption{Sơ đồ pinout board Yolo:Uno (ESP32-S3).}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\textwidth]{dashboard-screen-img.jpg}
+\caption{Dashboard cảnh báo va chạm chạy trên màn hình Waveshare LCD 7" (phần cứng thật).}
+\end{figure}
+
+% =====================================================================
+\section{Công cụ và framework}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}p{3.0cm}p{4.4cm}p{6.5cm}@{}}
+\toprule
+\textbf{Hạng mục} & \textbf{Lựa chọn} & \textbf{Lý do} \\
+\midrule
+Build system & PlatformIO (\code{pio run -e yolo\_uno}) & Layout thống nhất cho cả hai firmware, một toolchain quản lý hai dự án khác framework. \\
+\code{sensor-node} & \code{framework = arduino} & Tái sử dụng hệ sinh thái thư viện Arduino-ESP32 (\code{WiFi.h}, \code{PubSubClient}) — đủ cho tác vụ đo/lọc/publish MQTT. \\
+\code{waveshare-screen} & \code{framework = espidf} thuần & Driver màn hình/cảm ứng hiện đại (\code{esp\_lvgl\_adapter}, \code{esp\_lcd\_touch\_gt911}, LVGL 9.1, \code{esp\_lcd\_panel\_rgb}) đòi hỏi ESP-IDF $\geq 5.5$. \\
+Đồ hoạ UI & LVGL 9.1 + \code{esp\_lvgl\_adapter} & Thư viện GUI nhúng mã nguồn mở phổ biến cho ESP32, adapter chính thức của Espressif quản lý vòng lặp render và khoá luồng an toàn. \\
+Nền tảng IoT & CoreIoT (ThingsBoard) & MQTT-native, có sẵn Rule-Chain kéo-thả để xử lý ngưỡng cảnh báo mà không cần backend riêng. \\
+\bottomrule
+\end{tabular}
+\caption{Công cụ, framework sử dụng và lý do lựa chọn.}
+\end{table}
+
+% =====================================================================
+\section{Firmware Sensor Node}
+
+\subsection{Kiến trúc tác vụ FreeRTOS}
+
+Bảng~\ref{tab:tasks-sensor} liệt kê các tác vụ FreeRTOS đang chạy trên \code{sensor-node}.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lccc p{5.4cm}@{}}
+\toprule
+\textbf{Task} & \textbf{Stack} & \textbf{Priority} & \textbf{Core} & \textbf{Vai trò} \\
+\midrule
+\code{SensorTask} & 4096 & 2 & 1 & Trigger + đọc tuần tự từng cảm biến, đưa qua bộ lọc, ghi kết quả vào \code{SharedState}. \\
+\code{AppTask} & 2048 & 1 & 1 & Tiêu thụ dữ liệu đã lọc song song, độc lập chu kỳ đo. \\
+\code{NetworkTask} & 4096 & 1 & 0 & Kết nối Wi-Fi/MQTT, publish khoảng cách lên CoreIoT, tách khỏi core~1 để không ảnh hưởng timing đo. \\
+\bottomrule
+\end{tabular}
+\caption{Tác vụ FreeRTOS trên \code{sensor-node}.}
+\label{tab:tasks-sensor}
+\end{table}
+
+\subsection{Bộ lọc khoảng cách (phân cụm + trung bình trượt mũ)}
+
+Bộ lọc kết hợp phân cụm mẫu đo (loại outlier) và làm mượt bằng EMA (\emph{Exponential Moving Average}) để giảm nhiễu vốn có của cảm biến siêu âm giá rẻ mà vẫn phản ứng nhanh với thay đổi khoảng cách thật. Bảng~\ref{tab:filter} tóm tắt các tham số chính.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lp{9.6cm}@{}}
+\toprule
+\textbf{Tham số} & \textbf{Ý nghĩa} \\
+\midrule
+Kích thước lịch sử & 9 mẫu RAW gần nhất được lưu để phân cụm. \\
+Cụm hợp lệ tối thiểu & 5/9 mẫu phải thuộc cùng một cụm mới được chấp nhận. \\
+Dung sai cụm & Cơ bản 8\,cm, tăng theo tỉ lệ 8\% so với khoảng cách đo (nhiễu tỉ lệ thuận khoảng cách). \\
+Hệ số làm mượt EMA & 0.30. \\
+Xác nhận bước nhảy & Một thay đổi lớn (>30\,cm hoặc >25\%) phải lặp lại 3 lần liên tiếp mới được chấp nhận, tránh nhiễu tức thời. \\
+Reset bộ lọc & Sau 15 lần đọc lỗi liên tiếp. \\
+\bottomrule
+\end{tabular}
+\caption{Tham số chính của bộ lọc khoảng cách.}
+\label{tab:filter}
+\end{table}
+
+\subsection{Kết nối CoreIoT}
+
+Kết nối MQTT dùng thư viện \code{PubSubClient} trên nền \code{WiFi.h} (chế độ STA), xác thực bằng access-token làm username (chuẩn ThingsBoard, không cần mật khẩu). Dữ liệu khoảng cách hai cảm biến được publish dạng JSON lên topic telemetry với tần suất 2\,Hz (mã nguồn: \href{https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/CoreiotClient.cpp}{\code{CoreiotClient.cpp}}).
+
+\subsection{Cảnh báo còi cục bộ}
+
+Còi buzzer được điều khiển trực tiếp trên \code{sensor-node} theo hai mức ngưỡng, đồng bộ công thức với Rule-Chain phía máy chủ:
+
+\begin{itemize}[nosep]
+    \item \textbf{WARNING} (20\,--\,50\,cm): kêu 1 lần mỗi 3 giây.
+    \item \textbf{DANGER} ($<$20\,cm): kêu 1 lần mỗi 1 giây.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    every node/.style={font=\small},
+    axis/.style={-{Latex[length=2.5mm]}, thick}
+]
+\draw[axis] (0,0) -- (10.5,0) node[right] {khoảng cách (cm)};
+\foreach \x/\lbl in {0/0, 2/20, 5/50, 10/100} {
+    \draw (\x,0.08) -- (\x,-0.08) node[below] {\lbl};
+}
+\draw[fill=red!25] (0,0) rectangle (2,0.6) node[midway,above=0.15cm] {DANGER};
+\draw[fill=orange!30] (2,0) rectangle (5,0.6) node[midway,above=0.15cm] {WARNING};
+\draw[fill=green!25] (5,0) rectangle (10.5,0.6) node[midway,above=0.15cm] {SAFE};
+\end{tikzpicture}
+\caption{Thang ngưỡng cảnh báo SAFE / WARNING / DANGER dùng chung giữa buzzer cục bộ và Rule-Chain CoreIoT.}
+\end{figure}
+
+% =====================================================================
+\section{Firmware Waveshare Screen}
+
+\subsection{Kết nối mạng (ESP-IDF thuần)}
+
+Vì không sử dụng Arduino core, kết nối mạng dùng trực tiếp API ESP-IDF: \code{esp\_wifi.h}, \code{esp\_event.h}, \code{esp\_netif.h}, component \textbf{esp-mqtt} (\code{mqtt\_client.h}) và \code{nvs\_flash.h}. Sau khi kết nối MQTT thành công, thiết bị subscribe topic telemetry và các topic \code{v1/devices/me/attributes} để nhận cập nhật trạng thái từ Rule-Chain. Dữ liệu JSON nhận được được phân tích bằng thư viện \textbf{cJSON}.
+
+\subsection{Mô hình dữ liệu cảm biến}
+
+Component \code{sensor\_model} lưu trạng thái 6 cảm biến (khoảng cách, góc lắp, cờ dữ liệu cũ), được bảo vệ bằng một mutex FreeRTOS dùng chung. Mỗi khoảng cách được phân loại thành ba vùng: \textbf{SAFE} ($>$100\,cm), \textbf{CAUTION} (30\,--\,100\,cm), \textbf{DANGER} ($<$30\,cm).
+
+\subsection{Giao diện LVGL 9.1}
+
+Giao diện sử dụng các widget LVGL: \code{lv\_arc} (biểu diễn vùng cảm biến quanh xe), \code{lv\_label}, \code{lv\_anim} (hiệu ứng cảnh báo), \code{lv\_timer} (làm mới thông tin hệ thống định kỳ) và bố cục flex. Vì các tác vụ mạng chạy trên luồng (task) khác với luồng render LVGL, mọi thao tác cập nhật giao diện từ tác vụ mạng đều được bảo vệ bằng cơ chế khoá \code{esp\_lv\_adapter\_lock()} với thời gian chờ giới hạn 100\,ms, đảm bảo một luồng bị treo không làm treo toàn hệ thống.
+
+\subsection{Lớp hỗ trợ phần cứng màn hình (BSP)}
+
+Panel RGB $800\times480$ (RGB565) được khởi tạo qua \code{esp\_lcd\_new\_rgb\_panel()}, framebuffer đặt trong PSRAM. Bus I2C dùng API \code{driver/i2c\_master.h}, dùng chung cho IO-expander CH422G (ghi thanh ghi trực tiếp, không có driver riêng) và cảm ứng GT911 (driver chính thức \code{esp\_lcd\_touch\_gt911}) — mã nguồn: \href{https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/waveshare-screen/src/bsp/waveshare_rgb_lcd_port.c}{\code{waveshare\_rgb\_lcd\_port.c}}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.9cm and 1.4cm,
+    comp/.style={rectangle, rounded corners, draw=black!70, thick,
+                 minimum width=4.2cm, minimum height=1.1cm, align=center, fill=orange!8},
+]
+\node[comp] (sm) {\href{https://github.com/YdtTran/supersonic-warning-system/tree/main/firmware/waveshare-screen/components/sensor_model}{\code{sensor\_model}}\\\footnotesize dữ liệu 6 cảm biến + mutex};
+\node[comp, right=of sm] (cc) {\href{https://github.com/YdtTran/supersonic-warning-system/tree/main/firmware/waveshare-screen/components/coreiot_client}{\code{coreiot\_client}}\\\footnotesize Wi-Fi/MQTT + cJSON};
+\node[comp, below=1.3cm of $(sm)!0.5!(cc)$] (ui) {\href{https://github.com/YdtTran/supersonic-warning-system/tree/main/firmware/waveshare-screen/components/ui_dashboard}{\code{ui\_dashboard}}\\\footnotesize LVGL 9.1 + esp\_lv\_adapter lock};
+\node[comp, below=of ui, fill=blue!8] (bsp) {BSP\\\footnotesize RGB panel / GT911 / CH422G};
+
+\draw[-{Latex[length=2.2mm]}, thick] (cc) -- (ui);
+\draw[-{Latex[length=2.2mm]}, thick] (sm) -- (ui);
+\draw[-{Latex[length=2.2mm]}, thick] (ui) -- (bsp);
+\end{tikzpicture}
+\caption{Sơ đồ khối phần mềm của \code{waveshare-screen}.}
+\end{figure}
+
+% =====================================================================
+\section{Cloud CoreIoT (Rule-Chain)}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{rule-chain.png}
+\caption{Rule-Chain CoreIoT xử lý dữ liệu telemetry và định tuyến sang node màn hình.}
+\end{figure}
+
+\begin{sloppypar}
+Rule-Chain (\href{https://github.com/YdtTran/supersonic-warning-system/blob/main/cloud/coreiot/rule_chain/supersonic_rule_chain.json}{\code{supersonic\_rule\_chain.json}}) nhận bản tin telemetry từ \code{sensor-node}, script biến đổi (JavaScript) tính khoảng cách gần nhất trong các cảm biến, suy ra trạng thái \code{vehicle\_detected}, \code{warning\_status} (\code{NORMAL}/\code{WARNING}/\code{DANGER}) và \code{relay}; sau đó đổi chủ thể bản tin sang thiết bị \code{waveshare-screen} và đẩy dữ liệu xuống bằng cơ chế MQTT Shared Attributes (\code{notifyDevice=true}) để màn hình nhận cập nhật theo thời gian thực.
+\end{sloppypar}
+
+% =====================================================================
+\section{Chức năng đã hoàn thiện}
+
+\begin{itemize}[nosep]
+    \item Đo và lọc khoảng cách ổn định từ 2 cảm biến siêu âm, publish MQTT lên CoreIoT.
+    \item Rule-Chain CoreIoT xử lý ngưỡng cảnh báo và định tuyến dữ liệu sang node màn hình.
+    \item Dashboard LVGL hiển thị trạng thái va chạm theo thời gian thực, kèm thông tin hệ thống (Wi-Fi, trạng thái kết nối MQTT, phiên bản firmware).
+    \item Cảnh báo còi cục bộ trên \code{sensor-node}, phản hồi tức thời không phụ thuộc độ trễ mạng.
+    \item Cơ chế khoá luồng an toàn giữa tác vụ mạng và tác vụ giao diện trên node màn hình.
+\end{itemize}
+
+% =====================================================================
+\section{Hướng phát triển tiếp theo}
+\label{sec:future}
+
+\begin{itemize}[nosep]
+    \item Mở rộng đủ 6 cảm biến siêu âm bao quanh xe — kiến trúc phần mềm (\code{sensor\_model}, mảng cấu hình chân cảm biến) đã hỗ trợ sẵn, chỉ cần bổ sung phần cứng.
+    \item Bổ sung cảnh báo cho người đi đường phía ngoài xe (còi/đèn ngoài xe).
+\end{itemize}
+
+\end{document}
