@@ -1,6 +1,6 @@
 # Sensor Node Module - ESP32-S3 JSN-SR04T Vehicle Detection (S3 / S5)
 
-Mô-đun vi điều khiển **ESP32-S3** (board `yolo_uno`, PlatformIO + Arduino framework) đọc 2 cảm biến siêu âm chống nước **JSN-SR04T** (Trig/Echo), lọc nhiễu bằng thuật toán cụm + EMA, và đẩy khoảng cách đã lọc lên **CoreIoT (ThingsBoard)** qua MQTT.
+Mô-đun vi điều khiển **ESP32-S3** (board `yolo_uno`, PlatformIO + Arduino framework) đọc 2 cảm biến siêu âm chống nước **JSN-SR04T V3** (Mode 0 mặc định, Trig/Echo qua GPIO — không qua UART), lọc nhiễu bằng thuật toán cụm + EMA, và đẩy khoảng cách đã lọc lên **CoreIoT (ThingsBoard)** qua MQTT.
 
 Theo sơ đồ bố trí 6 cảm biến của hệ thống (xem [firmware/waveshare-screen/README.md](../waveshare-screen/README.md)), 2 cảm biến trên board này là:
 

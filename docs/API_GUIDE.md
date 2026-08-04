@@ -16,9 +16,11 @@
 
 Framework: `arduino` (PlatformIO, board `yolo_uno`). 4 thư viện tự viết, mỗi thư viện có 1 trách nhiệm duy nhất, không dùng `std::vector`/cấp phát động để tránh phân mảnh heap trên vi điều khiển.
 
-### 1.1 `UltrasonicSensor` — đọc 1 cảm biến JSN-SR04T
+### 1.1 `UltrasonicSensor` — đọc 1 cảm biến JSN-SR04T V3
 
 Header: [`include/UltrasonicSensor.h`](../firmware/sensor-node/include/UltrasonicSensor.h)
+
+Cảm biến vật lý trên `sensor-node` là **JSN-SR04T V3**, chạy ở **Mode 0 (mặc định)**: MCU phát xung Trig, đọc trực tiếp độ rộng xung Echo qua GPIO — không qua UART, không cần chỉnh jumper `R27` trên board.
 
 | API | Mô tả |
 |---|---|

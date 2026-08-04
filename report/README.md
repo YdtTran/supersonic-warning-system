@@ -60,7 +60,7 @@ Sơ đồ ý tưởng gốc (6 cảm biến bao quanh xe, đề xuất ban đầ
 | Thành phần | Mô tả |
 |---|---|
 | MCU | **Yolo:Uno** — board phát triển dựa trên **ESP32-S3-WROOM-1** (Dual-Core 240MHz, Wi-Fi/BLE, PSRAM Octal). Pinout đầy đủ bên dưới. |
-| Cảm biến khoảng cách | **JSN-SR04T** — cảm biến siêu âm chống nước, tách rời đầu dò và board mạch, hỗ trợ nhiều "Mode" hoạt động (UART tự động đo / phát xung Trig-Echo thủ công) chọn bằng điện trở `R27` trên board (xem ảnh bên dưới). |
+| Cảm biến khoảng cách | **JSN-SR04T V3** — cảm biến siêu âm chống nước, tách rời đầu dò và board mạch, chạy ở **Mode 0 (mặc định)**: MCU phát xung Trig, đọc trực tiếp độ rộng xung Echo qua GPIO (không qua UART, không cần chỉnh jumper). Dòng JSN-SR04T còn hỗ trợ các Mode khác (vd tự động đo và trả khoảng cách qua UART) chọn bằng điện trở `R27` trên board (xem ảnh minh hoạ bên dưới). |
 | Màn hình hiển thị | **Waveshare ESP32-S3 Touch LCD 7"** — panel RGB 800×480, cảm ứng dung kháng **GT911** (I2C, 400kHz Fast-mode), IO-expander **CH422G** (I2C, địa chỉ `0x24`/`0x38`) điều khiển backlight, reset cảm ứng, chip-select thẻ SD và MUX CAN. |
 | Cảnh báo cục bộ | Còi buzzer GPIO48 gắn trực tiếp trên `sensor-node` — phản hồi ngay lập tức không qua round-trip cloud. |
 
@@ -68,7 +68,7 @@ Sơ đồ ý tưởng gốc (6 cảm biến bao quanh xe, đề xuất ban đầ
 
 ![Board JSN-SR04T — khoanh vùng R27 chọn Mode hoạt động](./sr04t.png)
 
-*Điện trở `R27` (khoanh hồng) là jumper chọn giữa Mode UART tự động (module tự đo và trả khoảng cách qua UART) và Mode 3 (vi điều khiển tự phát xung Trig, đọc độ rộng xung Echo) — chi tiết debug thực tế xem [mục 9](#9-nhật-ký--lịch-sử-phát-triển).*
+*Ảnh minh hoạ chung cho dòng sản phẩm JSN-SR04T: điện trở `R27` (khoanh hồng) là jumper chọn giữa Mode UART tự động (module tự đo và trả khoảng cách qua UART) và Mode 3 (vi điều khiển tự phát xung Trig, đọc độ rộng xung Echo). Cảm biến thực tế trên `sensor-node` chạy ở **Mode 0 (mặc định)**, không cần chỉnh jumper. Việc debug Mode qua `R27` mô tả ở [mục 9.3](#93-prototype-pulse-read-prototype--debug-mode-cảm-biến) áp dụng cho cảm biến **SR04M-2** dùng trong prototype `pulse-read-prototype`, không phải JSN-SR04T V3 trên `sensor-node`.*
 
 Ảnh chụp dashboard chạy trên phần cứng thật:
 
@@ -186,7 +186,7 @@ Lý do chọn CoreIoT: nền tảng ThingsBoard mã nguồn mở/miễn phí, h�
 
 ## 8. Prototype thử nghiệm
 
-Prototype [`pulse-read-prototype`](https://github.com/YdtTran/supersonic-warning-system/tree/main/prototypes/pulse-read-prototype): đọc trực tiếp xung Trig/Echo qua GPIO (JSN-SR04T ở **Mode 3**, không qua UART) thay vì giải mã khung UART như `sensor-node`. Đo time-of-flight trực tiếp cho kết quả ổn định và ít nhiễu hơn. Quá trình debug thực tế xem [mục 9](#9-nhật-ký--lịch-sử-phát-triển).
+Prototype [`pulse-read-prototype`](https://github.com/YdtTran/supersonic-warning-system/tree/main/prototypes/pulse-read-prototype): đọc trực tiếp xung Trig/Echo qua GPIO trên cảm biến **SR04M-2** (đặt ở **Mode 3** qua jumper `R27`) — cùng kỹ thuật đo time-of-flight trực tiếp mà `sensor-node` áp dụng cho JSN-SR04T V3 (**Mode 0 mặc định**, không cần chỉnh jumper). Prototype này dùng để xác nhận kỹ thuật đo trước khi áp dụng vào `sensor-node`. Quá trình debug thực tế xem [mục 9](#9-nhật-ký--lịch-sử-phát-triển).
 
 ## 9. Nhật ký & lịch sử phát triển
 
@@ -241,7 +241,7 @@ Hiện SSID Wi-Fi đang kết nối, và tab SYSTEM đầy đủ thông tin key 
 | `architecture.png` | Ý tưởng/đề xuất ban đầu (6 cảm biến, cảnh báo người đi đường) |
 | `dashboard-screen-img.jpg` | Ảnh chụp thật dashboard chạy trên Waveshare LCD 7" |
 | `rule-chain.png` | Screenshot Rule-Chain CoreIoT |
-| `sr04t.png` | Board JSN-SR04T, khoanh vùng jumper chọn Mode |
+| `sr04t.png` | Ảnh minh hoạ chung dòng JSN-SR04T, khoanh vùng jumper `R27` chọn Mode (không phải ảnh chụp đúng cấu hình thực tế đang dùng — `sensor-node` chạy JSN-SR04T V3 ở Mode 0 mặc định) |
 | `image.png` | Sơ đồ pinout Yolo:Uno (ESP32-S3) |
 
 **Đề xuất bổ sung** (chưa có, nên chụp/vẽ thêm khi có điều kiện):
