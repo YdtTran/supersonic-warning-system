@@ -1,6 +1,8 @@
 # Báo cáo Kỹ thuật — Hệ thống Cảnh báo Va chạm bằng Cảm biến Siêu âm JSN-SR04T & CoreIoT
 
 > Tài liệu này là bản báo cáo **đầy đủ** (kèm nhật ký phát triển, sự cố đã gặp và hạn chế hiện tại) của dự án [`supersonic-sensor-ACLAB`](https://github.com/YdtTran/supersonic-warning-system). Bản báo cáo **trang trọng, chỉ mô tả hệ thống ở trạng thái hiện tại** (không có log/lịch sử) nằm ở [`report.tex`](report.tex) / [`report.pdf`](report.pdf), biên dịch bằng pdflatex (MiKTeX).
+>
+> Tài liệu này tập trung vào **kiến trúc, quyết định thiết kế và lịch sử phát triển**. Để tra cứu **API từng thư viện/component** (chữ ký hàm, ví dụ code) và **hướng dẫn cấu hình bằng phần mềm** (đổi Wi-Fi/MQTT, thêm cảm biến, đổi ngưỡng cảnh báo, cấu hình Rule-Chain), xem [`docs/API_GUIDE.md`](../docs/API_GUIDE.md).
 
 ---
 
@@ -97,6 +99,8 @@ Sơ đồ ý tưởng gốc (6 cảm biến bao quanh xe, đề xuất ban đầ
 
 Ngoài ra [`buzzerTask()`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp#L197-L257) (dòng 197-257) đã được viết đầy đủ logic còi cảnh báo nhưng **cần xác minh có được khởi tạo bằng `xTaskCreatePinnedToCore` trong `setup()` hay chưa** — xem [mục 10](#10-hạn-chế--việc-cần-làm-thêm).
 
+> API chi tiết + ví dụ code của `UltrasonicSensor`, `DistanceFilter`, `SharedState`, `CoreiotClient`: [`docs/API_GUIDE.md` mục 1](../docs/API_GUIDE.md#1-firmwaresensor-node-arduino--thư-viện-đo--lọc-cảm-biến).
+
 ### 5.2 Bộ lọc khoảng cách (Cluster + EMA)
 
 Tham số cấu hình đầy đủ tại [`firmware/sensor-node/include/Config.h`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/include/Config.h):
@@ -113,6 +117,8 @@ Tham số cấu hình đầy đủ tại [`firmware/sensor-node/include/Config.h
 | `RESET_AFTER_INVALID` | 15 | Sau 15 lần đọc lỗi liên tiếp, reset bộ lọc và báo mất tín hiệu. |
 
 Lý do dùng cluster+EMA thay vì lọc trung vị đơn giản: cảm biến siêu âm giá rẻ (JSN-SR04T) dễ có outlier do phản xạ đa hướng — phân cụm loại outlier hiệu quả hơn, EMA làm mượt kết quả hiển thị mà vẫn phản ứng nhanh với thay đổi thật (xác nhận bằng "jump" logic).
+
+> Cách tinh chỉnh các tham số này (làm mượt hơn/phản ứng nhanh hơn, thêm cảm biến, đổi Wi-Fi/MQTT) không cần sửa logic: [`docs/API_GUIDE.md` mục 3](../docs/API_GUIDE.md#3-cấu-hình-bằng-phần-mềm--không-cần-sửa-code-logic).
 
 ### 5.3 Kết nối CoreIoT (MQTT)
 
@@ -147,6 +153,8 @@ Widget sử dụng: `lv_arc_*` (6 cung "chùm sóng" quanh sơ đồ xe), `lv_la
 
 **Cơ chế khoá luồng** `esp_lv_adapter_lock()`/`unlock()`: vì các callback Wi-Fi/MQTT chạy trên task khác với task LVGL (esp_lv_adapter chạy LVGL trong task riêng, stack 12KB trong PSRAM), mọi thao tác cập nhật UI từ `NetworkTask` phải khoá trước khi gọi API LVGL. Ban đầu dùng timeout vô hạn (`-1`) — tiềm ẩn treo toàn hệ thống nếu task LVGL bị kẹt; đã sửa thành `LV_LOCK_TIMEOUT_TICKS = pdMS_TO_TICKS(100)` cho mọi lần khoá từ network callback. Riêng lần khoá lúc khởi tạo UI trong `app_main()` (trước khi `NetworkTask` chạy, không có tranh chấp) vẫn giữ `-1`.
 
+> API chi tiết + ví dụ code của `sensor_model`, `coreiot_client`, `ui_dashboard`: [`docs/API_GUIDE.md` mục 2](../docs/API_GUIDE.md#2-firmwarewaveshare-screen-esp-idf--component-dashboard).
+
 ### 6.4 BSP — driver phần cứng màn hình
 
 [`firmware/waveshare-screen/src/bsp/waveshare_rgb_lcd_port.c`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/waveshare-screen/src/bsp/waveshare_rgb_lcd_port.c):
@@ -173,6 +181,8 @@ Rule-Chain [`cloud/coreiot/rule_chain/supersonic_rule_chain.json`](https://githu
 4. **Update Shared Attributes** (`SHARED_SCOPE`, `notifyDevice=true`) — đẩy dữ liệu đã xử lý xuống `waveshare-screen` qua MQTT shared-attributes, đồng thời lưu lịch sử timeseries riêng cho thiết bị này.
 
 Lý do chọn CoreIoT: nền tảng ThingsBoard mã nguồn mở/miễn phí, hỗ trợ MQTT gốc, Rule-Chain kéo-thả cho phép viết logic ngưỡng bằng JavaScript ngay trên UI mà không cần triển khai backend riêng, phù hợp quy mô dự án học thuật/prototype.
+
+> Chi tiết từng node, script JS đầy đủ, cách sửa ngưỡng cảnh báo và lưu ý khi import/deploy sang tenant CoreIoT khác: [`docs/API_GUIDE.md` mục 4](../docs/API_GUIDE.md#4-rule-chain-coreiot--cấu-hình--api-node).
 
 ## 8. Prototype thử nghiệm
 

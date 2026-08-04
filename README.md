@@ -35,6 +35,8 @@ Hệ thống nhúng vi điều khiển **ESP32-S3** phát hiện xe thông qua *
 supersonic-sensor-ACLAB/
 ├── AGENTS.template.md                 # Template cấu hình môi trường & quy tắc cho AI Agent (Cross-Device)
 ├── AGENTS.md                          # Cấu hình môi trường local & cổng COM (Ignored by Git)
+├── CONTRIBUTING.md                    # Quy trình Git, quy ước commit, quy tắc code, ghi log triển khai
+├── SECURITY.md                        # Vấn đề bảo mật đã biết & cách báo lỗi
 ├── config/                            # Thư mục quản lý Secret Keys & Cấu hình
 │   ├── keys.template.json             # Template mẫu khai báo key cho máy mới (Tracked)
 │   └── keys.json                      # Cấu hình chứa Device Access Token local (Ignored)
@@ -65,10 +67,35 @@ supersonic-sensor-ACLAB/
 ├── reference/                         # Submodule mã nguồn tham khảo (vendor)
 │   ├── lcd-example/                   # Waveshare ESP32-S3 Touch LCD 7 official examples
 │   └── esp-faq/                       # ESP-IDF FAQ tham khảo
+├── report/                            # Báo cáo kỹ thuật (README + LaTeX/PDF)
 └── docs/
+    ├── README.md                      # Mục lục điều hướng toàn bộ tài liệu trong docs/
+    ├── API_GUIDE.md                   # Hướng dẫn API thư viện/component + cấu hình phần mềm
     ├── architecture/                  # Tài liệu kiến trúc & review
     └── logs/                          # Nhật ký triển khai (version logs) gộp từ mọi component
 ```
+
+---
+
+## 📚 Tài liệu Module (Module Documentation)
+
+| Module | Tài liệu |
+| --- | --- |
+| **Mục lục toàn bộ tài liệu** | [`docs/README.md`](docs/README.md) — điểm vào cho `docs/architecture/`, `docs/logs/`, khoảng trống tài liệu đã biết |
+| Toàn hệ thống | [`report/README.md`](report/README.md) — báo cáo kỹ thuật đầy đủ (kiến trúc, phần cứng, nhật ký phát triển, hạn chế); bản trang trọng: [`report/report.pdf`](report/report.pdf) |
+| **API & cấu hình phần mềm** | [`docs/API_GUIDE.md`](docs/API_GUIDE.md) — API từng thư viện/component (`UltrasonicSensor`, `DistanceFilter`, `CoreiotClient`, `sensor_model`, `coreiot_client`, `ui_dashboard`), ví dụ code, cách đổi Wi-Fi/MQTT/ngưỡng cảnh báo, cách cấu hình Rule-Chain CoreIoT |
+| Đóng góp | [`CONTRIBUTING.md`](CONTRIBUTING.md) — quy trình Git, quy ước commit, quy tắc code, ghi log triển khai |
+| Bảo mật | [`SECURITY.md`](SECURITY.md) — vấn đề bảo mật đã biết (token hardcode, MQTT không TLS), cách báo lỗi |
+| Lịch sử thay đổi | [`CHANGELOG.md`](CHANGELOG.md) — tóm tắt thay đổi theo mốc thời gian (Keep a Changelog, chưa có SemVer/tag release) |
+| Quyết định kiến trúc | [`docs/adr/`](docs/adr/) — Architecture Decision Records (PlatformIO thống nhất, ESP-IDF thuần cho `waveshare-screen`, CoreIoT, bộ lọc Cluster+EMA) |
+| Schema dữ liệu | [`docs/architecture/DATA_SCHEMA.md`](docs/architecture/DATA_SCHEMA.md) — schema payload MQTT `sensor-node` ↔ CoreIoT ↔ `waveshare-screen` và struct `sensor_model` |
+| `firmware/sensor-node` | [`firmware/sensor-node/README.md`](firmware/sensor-node/README.md) — đo/lọc 2 cảm biến S3/S5, buzzer cục bộ, publish MQTT |
+| `firmware/waveshare-screen` | [`firmware/waveshare-screen/README.md`](firmware/waveshare-screen/README.md) — dashboard LVGL 800×480, BSP màn hình/cảm ứng, build & flash, debug serial |
+| `cloud/coreiot/rule_chain/` | [`cloud/coreiot/rule_chain/supersonic_rule_chain.json`](cloud/coreiot/rule_chain/supersonic_rule_chain.json) — chi tiết từng node & cách sửa ngưỡng: [`docs/API_GUIDE.md` mục 4](docs/API_GUIDE.md#4-rule-chain-coreiot--cấu-hình--api-node) |
+| `prototypes/pulse-read-prototype` | Đọc trực tiếp Trig/Echo GPIO (SR04M-2 Mode 3) — xem [`report/README.md` mục 8](report/README.md#8-prototype-thử-nghiệm) |
+| `prototypes/water-level-uart` | Đo mực nước JSN-SR04T-V3 UART + Kalman/Median-5 — mã nguồn tại [`prototypes/water-level-uart/`](prototypes/water-level-uart/) |
+| Nhật ký phát triển | [`docs/logs/`](docs/logs/) — theo từng chủ đề (UART GPIO43, SR04M2 driver, dashboard library, session log màn hình, …) |
+| Kiến trúc & review | [`docs/architecture/`](docs/architecture/) — checkpoint tiến độ, review kiến trúc LVGL demos, review ví dụ Waveshare |
 
 > **Lưu ý kiến trúc:** `sensor-node` dùng `framework = arduino` (Arduino + FreeRTOS), còn `waveshare-screen` dùng `framework = espidf` **thuần** — cả hai đều PlatformIO-hoá (`platformio.ini`, `board = yolo_uno`) nhưng lý do và giới hạn kỹ thuật của lựa chọn này (tổ hợp `arduino, espidf` không build được do bị khoá ở ESP-IDF 4.4.7 trong khi driver màn hình cần ≥5.5) được ghi chi tiết tại [docs/logs/waveshare-screen_ARDUINO_REFACTOR_LOG.md](docs/logs/waveshare-screen_ARDUINO_REFACTOR_LOG.md).
 
