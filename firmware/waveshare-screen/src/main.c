@@ -12,116 +12,140 @@
 #include "waveshare_rgb_lcd_port.h"
 #include "sensor_model.h"
 #include "ui_dashboard.h"
-#include "coreiot_client.h"
-#include "cJSON.h"
+
+#include "esp_now.h"
+#include "esp_wifi.h"
+#include "esp_mac.h"
+#include "esp_event.h"
+#include "esp_netif.h"
+#include "esp_timer.h"
+#include "nvs_flash.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 static const char *TAG = "collision_dashboard";
 
-static const char *k_sensor_json_keys[SENSOR_MODEL_COUNT] = {
-    "front", "rear", "left_front", "left_rear", "right_front", "right_rear",
-};
-
-// Callers here run on the Wi-Fi event loop task / esp-mqtt task, not the LVGL
+// Callers here run on the Wi-Fi event loop task / esp-now recv task, not the LVGL
 // task, so a bounded timeout is used instead of an infinite wait: if the LVGL
-// task is ever stalled, this must not block network/mqtt event processing
-// forever.
+// task is ever stalled, this must not block network event processing forever.
 #define LV_LOCK_TIMEOUT_TICKS pdMS_TO_TICKS(100)
 
-static void on_wifi_status(bool is_connected, const char *ip)
+// =========================================================
+// ESP-NOW wire schema - direct link from firmware/sensor-node, replacing the
+// MQTT/CoreIoT path in this branch (see docs/architecture/ESPNOW_NETWORK.md).
+// No shared header between the two PlatformIO projects, so this struct and
+// the channel below must be kept manually in sync with
+// firmware/sensor-node/include/EspNowConfig.h.
+// =========================================================
+
+#define ESPNOW_CHANNEL 1
+#define ESPNOW_SENSOR_SLOT_COUNT 6
+#define ESPNOW_LINK_TIMEOUT_MS 1500
+
+typedef struct __attribute__((packed)) {
+    float distance_cm[ESPNOW_SENSOR_SLOT_COUNT];
+    uint8_t valid[ESPNOW_SENSOR_SLOT_COUNT];
+} espnow_sensor_msg_t;
+
+static volatile bool s_espnow_linked = false;
+static volatile int64_t s_last_recv_us = 0;
+
+static void on_data_recv(const esp_now_recv_info_t *info, const uint8_t *data, int len)
 {
+    (void)info;
+
+    if (len != (int)sizeof(espnow_sensor_msg_t)) {
+        ESP_LOGW(TAG, "Dropped ESP-NOW packet with unexpected size %d", len);
+        return;
+    }
+
+    espnow_sensor_msg_t msg;
+    memcpy(&msg, data, sizeof(msg));
+    s_last_recv_us = esp_timer_get_time();
+
     if (esp_lv_adapter_lock(LV_LOCK_TIMEOUT_TICKS) == ESP_OK) {
-        ui_dashboard_set_iot_status(is_connected, ip);
+        if (!s_espnow_linked) {
+            s_espnow_linked = true;
+            ui_dashboard_set_espnow_status(true);
+        }
+
+        for (int i = 0; i < ESPNOW_SENSOR_SLOT_COUNT; i++) {
+            if (msg.valid[i]) {
+                ui_dashboard_update_sensor((uint8_t)i, (uint16_t)msg.distance_cm[i]);
+            }
+        }
+
         esp_lv_adapter_unlock();
     }
 }
 
-static void on_mqtt_status(bool is_connected)
+// Periodic watchdog (esp_timer, 1s tick): if no ESP-NOW packet has arrived within
+// ESPNOW_LINK_TIMEOUT_MS, drop the header badge to "NO LINK" - sensor-node sends every 500ms,
+// so a real link loss is caught within 1.5-2s.
+static void espnow_watchdog_cb(void *arg)
 {
-    if (esp_lv_adapter_lock(LV_LOCK_TIMEOUT_TICKS) == ESP_OK) {
-        ui_dashboard_set_iot_status(is_connected, NULL);
-        esp_lv_adapter_unlock();
-    }
-}
+    (void)arg;
 
-static void on_mqtt_data(const char *topic, int topic_len, const char *payload, int payload_len)
-{
-    (void)topic;
-    (void)topic_len;
-
-    if (payload_len <= 0 || payload_len >= 512) {
+    if (!s_espnow_linked) {
         return;
     }
 
-    char buf[512];
-    memcpy(buf, payload, payload_len);
-    buf[payload_len] = '\0';
-
-    cJSON *json = cJSON_Parse(buf);
-    if (json == NULL) {
+    int64_t elapsed_ms = (esp_timer_get_time() - s_last_recv_us) / 1000;
+    if (elapsed_ms <= ESPNOW_LINK_TIMEOUT_MS) {
         return;
     }
 
-    cJSON *values = cJSON_GetObjectItem(json, "values");
-
     if (esp_lv_adapter_lock(LV_LOCK_TIMEOUT_TICKS) == ESP_OK) {
-        for (int i = 0; i < SENSOR_MODEL_COUNT; i++) {
-            cJSON *item = cJSON_GetObjectItem(json, k_sensor_json_keys[i]);
-            if (!item && values) {
-                item = cJSON_GetObjectItem(values, k_sensor_json_keys[i]);
-            }
-            if (item && cJSON_IsNumber(item)) {
-                ui_dashboard_update_sensor(i, (uint16_t)item->valuedouble);
-            }
-        }
-
-        cJSON *relay_item = cJSON_GetObjectItem(json, "relay");
-        if (!relay_item && values) {
-            relay_item = cJSON_GetObjectItem(values, "relay");
-        }
-        cJSON *warn_item = cJSON_GetObjectItem(json, "warning_status");
-        if (!warn_item && values) {
-            warn_item = cJSON_GetObjectItem(values, "warning_status");
-        }
-        if (relay_item && cJSON_IsString(relay_item)) {
-            bool relay_on = strcmp(relay_item->valuestring, "ON") == 0;
-            const char *warn_str = (warn_item && cJSON_IsString(warn_item)) ? warn_item->valuestring : NULL;
-            ui_dashboard_set_relay_state(relay_on, warn_str);
-        }
-
-        cJSON *buzzer_item = cJSON_GetObjectItem(json, "buzzer");
-        if (!buzzer_item && values) {
-            buzzer_item = cJSON_GetObjectItem(values, "buzzer");
-        }
-        if (buzzer_item && cJSON_IsString(buzzer_item)) {
-            bool buzzer_on = strcmp(buzzer_item->valuestring, "ON") == 0;
-            ui_dashboard_set_buzzer_state(buzzer_on);
-        }
-
+        s_espnow_linked = false;
+        ui_dashboard_set_espnow_status(false);
         esp_lv_adapter_unlock();
     }
-
-    cJSON_Delete(json);
 }
 
 // =========================================================
 // NETWORK TASK
-// Khởi tạo Wi-Fi/MQTT tới CoreIoT (esp_wifi + esp-mqtt, xem
-// components/coreiot_client) trong một FreeRTOS task riêng, tách
-// khỏi task LVGL - cùng phong cách "networkTask" tách biệt như
-// firmware/sensor-node. coreiot_client_init() không blocking: nó
-// chỉ đăng ký event handler rồi trả về ngay, toàn bộ kết nối/publish
-// tiếp theo chạy nền qua esp_event + task nội bộ của esp-mqtt.
+// Khởi tạo ESP-NOW receiver (Wi-Fi STA ở chế độ trần, không kết nối AP nào,
+// chỉ cố định channel để nhận gói ESP-NOW từ sensor-node) trong một FreeRTOS
+// task riêng, tách khỏi task LVGL - cùng phong cách "networkTask" tách biệt
+// như firmware/sensor-node.
 // =========================================================
 
 static void networkTask(void *pvParameters)
 {
     (void)pvParameters;
 
-    coreiot_client_set_callbacks(on_wifi_status, on_mqtt_status, on_mqtt_data);
-    coreiot_client_init();
+    ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    // esp_netif_create_default_wifi_sta() returns esp_netif_t*, not esp_err_t - it cannot be
+    // wrapped in ESP_ERROR_CHECK.
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+    assert(sta_netif != NULL);
+
+    wifi_init_config_t wifi_cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&wifi_cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE));
+
+    uint8_t mac[6];
+    ESP_ERROR_CHECK(esp_wifi_get_mac(WIFI_IF_STA, mac));
+    ESP_LOGI(TAG, "Own MAC: " MACSTR " (update ESPNOW_PEER_MAC in sensor-node if this changed)", MAC2STR(mac));
+
+    ESP_ERROR_CHECK(esp_now_init());
+    ESP_ERROR_CHECK(esp_now_register_recv_cb(on_data_recv));
+    ESP_LOGI(TAG, "ESP-NOW receiver ready on channel %d", ESPNOW_CHANNEL);
+
+    const esp_timer_create_args_t watchdog_args = {
+        .callback = espnow_watchdog_cb,
+        .name = "espnow_wdt",
+    };
+    esp_timer_handle_t watchdog_timer;
+    ESP_ERROR_CHECK(esp_timer_create(&watchdog_args, &watchdog_timer));
+    ESP_ERROR_CHECK(esp_timer_start_periodic(watchdog_timer, 1000000)); // 1s
 
     vTaskDelete(NULL);
 }
@@ -168,6 +192,8 @@ void app_main(void)
     ESP_LOGI(TAG, "Initializing Collision-Avoidance Dashboard");
     if (esp_lv_adapter_lock(-1) == ESP_OK) {
         ui_dashboard_init();
+        ui_dashboard_set_espnow_status(false);
+        ui_dashboard_set_relay_state(false, "N/A (ESP-NOW mode)");
         esp_lv_adapter_unlock();
     }
 

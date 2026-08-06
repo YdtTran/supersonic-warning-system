@@ -64,6 +64,16 @@ void ui_dashboard_set_relay_state(bool relay_on, const char *warning_status);
  */
 void ui_dashboard_set_buzzer_state(bool buzzer_on);
 
+/**
+ * @brief Update the ESP-NOW link badge in the top-right of the header bar. Used instead of
+ *        ui_dashboard_set_iot_status() when sensor-node talks directly to waveshare-screen over
+ *        ESP-NOW rather than via MQTT/CoreIoT (see docs/architecture/ESPNOW_NETWORK.md). Must be
+ *        called with the LVGL lock held.
+ *
+ * @param linked true if a sensor-node ESP-NOW packet has been received within the watchdog window
+ */
+void ui_dashboard_set_espnow_status(bool linked);
+
 #ifdef __cplusplus
 }
 #endif

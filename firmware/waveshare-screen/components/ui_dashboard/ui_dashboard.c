@@ -606,6 +606,12 @@ static void evaluate_hazard(void)
 
     sensor_zone_t worst = SENSOR_ZONE_SAFE;
     for (int i = 0; i < SENSOR_MODEL_COUNT; i++) {
+        // Skip sensors that have never reported a reading (is_stale) - e.g. slots with no
+        // physical hardware attached yet in ESP-NOW mode - otherwise their default distance_cm=0
+        // classifies as DANGER and permanently pins the OVERALL banner.
+        if (readings[i].is_stale) {
+            continue;
+        }
         sensor_zone_t z = sensor_model_classify(readings[i].distance_cm);
         if (z > worst) worst = z;
     }
@@ -752,4 +758,14 @@ void ui_dashboard_set_buzzer_state(bool buzzer_on)
 
     lv_label_set_text_fmt(s_lbl_buzzer_state, "BUZZER: %s", buzzer_on ? "ON" : "OFF");
     lv_obj_set_style_text_color(s_lbl_buzzer_state, buzzer_on ? lv_color_hex(COLOR_CAUTION) : lv_color_hex(COLOR_TEXT), 0);
+}
+
+void ui_dashboard_set_espnow_status(bool linked)
+{
+    if (!s_lbl_mqtt_status) {
+        return;
+    }
+
+    lv_label_set_text(s_lbl_mqtt_status, linked ? "ESP-NOW: LINKED" : "ESP-NOW: NO LINK");
+    lv_obj_set_style_text_color(s_lbl_mqtt_status, linked ? lv_color_hex(COLOR_SAFE) : lv_color_hex(COLOR_DANGER), 0);
 }

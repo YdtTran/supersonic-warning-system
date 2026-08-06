@@ -17,4 +17,9 @@ idf_component_register(
         sensor_model
         coreiot_client
         ui_dashboard
+        nvs_flash
+        esp_wifi
+        esp_event
+        esp_netif
+        esp_timer
 )
