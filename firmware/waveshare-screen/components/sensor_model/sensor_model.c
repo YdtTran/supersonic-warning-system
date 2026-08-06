@@ -55,6 +55,18 @@ void sensor_model_set_distance(sensor_id_t id, uint16_t distance_cm)
     xSemaphoreGive(s_mutex);
 }
 
+void sensor_model_clear(sensor_id_t id)
+{
+    if (id >= SENSOR_MODEL_COUNT || s_mutex == NULL) {
+        return;
+    }
+
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s_readings[id].distance_cm = 0;
+    s_readings[id].is_stale = true;
+    xSemaphoreGive(s_mutex);
+}
+
 sensor_reading_t sensor_model_get(sensor_id_t id)
 {
     sensor_reading_t reading = {0};

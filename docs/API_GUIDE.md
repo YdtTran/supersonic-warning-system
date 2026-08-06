@@ -1,13 +1,15 @@
 # Hướng dẫn API & Cấu hình phần mềm
 
 > Tài liệu tham khảo cho lập trình viên: API của các thư viện/component tự viết trong dự án, kèm ví dụ sử dụng và cách cấu hình bằng phần mềm (không cần sửa phần cứng). Tổng quan kiến trúc/lý do thiết kế xem [`report/README.md`](../report/README.md); mô tả từng module xem README riêng của [`firmware/sensor-node`](../firmware/sensor-node/README.md) và [`firmware/waveshare-screen`](../firmware/waveshare-screen/README.md).
+>
+> **Nhánh hiện tại dùng ESP-NOW trực tiếp giữa 2 board, không qua CoreIoT/MQTT** — các mục **1.4, 2.2, 3.1 và toàn bộ mục 4** dưới đây mô tả đường CoreIoT/Rule-Chain **không hoạt động** trên nhánh này (code vẫn còn trong cây, giữ lại để khôi phục sau). Xem mục **1.5** và **2.2b** cho API ESP-NOW đang dùng thật, và [`docs/architecture/ESPNOW_NETWORK.md`](architecture/ESPNOW_NETWORK.md)/[`docs/architecture/DATA_SCHEMA.md`](architecture/DATA_SCHEMA.md) cho schema.
 
 ## Mục lục
 
 1. [`firmware/sensor-node` (Arduino) — thư viện đo & lọc cảm biến](#1-firmwaresensor-node-arduino--thư-viện-đo--lọc-cảm-biến)
 2. [`firmware/waveshare-screen` (ESP-IDF) — component dashboard](#2-firmwarewaveshare-screen-esp-idf--component-dashboard)
 3. [Cấu hình bằng phần mềm — không cần sửa code logic](#3-cấu-hình-bằng-phần-mềm--không-cần-sửa-code-logic)
-4. [Rule-Chain CoreIoT — cấu hình & API node](#4-rule-chain-coreiot--cấu-hình--api-node)
+4. [Rule-Chain CoreIoT — cấu hình & API node — không dùng trên nhánh hiện tại](#4-rule-chain-coreiot--cấu-hình--api-node)
 5. [Lưu ý bảo mật](#5-lưu-ý-bảo-mật)
 
 ---
@@ -107,7 +109,7 @@ if (sharedStateGet(/*sensorIndex=*/0, distanceCm) && distanceCm < 50.0f) {
 }
 ```
 
-### 1.4 `CoreiotClient` — publish MQTT lên CoreIoT (ThingsBoard)
+### 1.4 `CoreiotClient` — publish MQTT lên CoreIoT (ThingsBoard) — **không dùng trên nhánh hiện tại**
 
 Header: [`include/CoreiotClient.h`](../firmware/sensor-node/include/CoreiotClient.h)
 
@@ -138,6 +140,37 @@ void networkTask(void *) {
 }
 ```
 
+### 1.5 `EspNowClient` — gửi trực tiếp tới `waveshare-screen` qua ESP-NOW (đang dùng)
+
+Header: [`include/EspNowClient.h`](../firmware/sensor-node/include/EspNowClient.h), cấu hình: [`include/EspNowConfig.h`](../firmware/sensor-node/include/EspNowConfig.h). Schema đầy đủ: [`docs/architecture/ESPNOW_NETWORK.md`](architecture/ESPNOW_NETWORK.md).
+
+| API | Mô tả |
+|---|---|
+| `void begin()` | `WiFi.mode(WIFI_STA)` + set channel cố định (`ESPNOW_CHANNEL`, không `WiFi.begin()`), khởi tạo `esp_now`, đăng ký peer `ESPNOW_PEER_MAC`. Gọi 1 lần trong `networkTask`. |
+| `bool sendReading(const espnow_sensor_msg_t &msg)` | `esp_now_send()` struct 6-slot tới `ESPNOW_PEER_MAC`. Trả `false` nếu `esp_now_send()` lỗi (không đảm bảo đã tới nơi — xem callback `onDataSent` trong `.cpp` để log kết quả gửi thật). |
+
+```cpp
+#include "EspNowClient.h"
+#include "EspNowConfig.h"
+
+EspNowClient client;
+
+void networkTask(void *) {
+    client.begin();
+    for (;;) {
+        espnow_sensor_msg_t msg = {}; // valid[] mặc định 0 = "null" cho slot chưa lắp phần cứng
+        float distanceCm;
+        if (sharedStateGet(/*sensorIndex=*/0, distanceCm)) {
+            uint8_t slot = SENSOR_ESPNOW_SLOT[0];
+            msg.distance_cm[slot] = distanceCm;
+            msg.valid[slot] = 1;
+        }
+        client.sendReading(msg);
+        vTaskDelay(pdMS_TO_TICKS(ESPNOW_SEND_INTERVAL_MS));
+    }
+}
+```
+
 ---
 
 ## 2. `firmware/waveshare-screen` (ESP-IDF) — component dashboard
@@ -152,21 +185,23 @@ Header: [`components/sensor_model/include/sensor_model.h`](../firmware/waveshare
 |---|---|
 | `void sensor_model_init(void)` | Khởi tạo mutex + giá trị mặc định. Gọi 1 lần trong `app_main()`. |
 | `void sensor_model_set_distance(sensor_id_t id, uint16_t distance_cm)` | Cập nhật khoảng cách 1 cảm biến (thread-safe). |
+| `void sensor_model_clear(sensor_id_t id)` | Đánh dấu 1 cảm biến "không có dữ liệu" (`distance_cm=0`, `is_stale=true`) — dùng khi ESP-NOW báo `valid=0` cho slot đó, để không hiển thị/dùng distance cũ. Thread-safe. |
 | `sensor_reading_t sensor_model_get(sensor_id_t id)` | Đọc snapshot 1 cảm biến (thread-safe). |
 | `void sensor_model_get_all(sensor_reading_t out[SENSOR_MODEL_COUNT])` | Đọc snapshot cả 6 cảm biến cùng lúc. |
 | `sensor_zone_t sensor_model_classify(uint16_t distance_cm)` | Phân loại `SENSOR_ZONE_SAFE` (>100cm) / `CAUTION` (30–100cm) / `DANGER` (<30cm). |
 
 `sensor_id_t` gồm `SENSOR_ID_FRONT/REAR/LEFT_FRONT/LEFT_REAR/RIGHT_FRONT/RIGHT_REAR` (0–5, khớp thứ tự `S1..S6`).
 
-> Schema đầy đủ của struct này (bảng field, và lưu ý chỉ 2/6 slot có dữ liệu sống vì mới lắp 2 cảm biến phần cứng): [`docs/architecture/DATA_SCHEMA.md` mục 3](architecture/DATA_SCHEMA.md#3-sensor_model--struct-nội-bộ-trên-waveshare-screen).
+> Schema đầy đủ của struct này (bảng field, và lưu ý chỉ 3/6 slot có dữ liệu sống vì mới lắp 3 cảm biến phần cứng): [`docs/architecture/DATA_SCHEMA.md` mục 3](architecture/DATA_SCHEMA.md#3-sensor_model--struct-nội-bộ-trên-waveshare-screen).
 
 ```c
 #include "sensor_model.h"
 
 void app_main(void) {
     sensor_model_init();
-    // Khi nhận dữ liệu MQTT (xem coreiot_client bên dưới):
-    sensor_model_set_distance(SENSOR_ID_LEFT_FRONT, 85);
+    // Khi nhận message ESP-NOW (xem mục 2.2b bên dưới):
+    sensor_model_set_distance(SENSOR_ID_LEFT_FRONT, 85);   // valid=1
+    sensor_model_clear(SENSOR_ID_REAR);                     // valid=0 cho slot đó
 
     sensor_reading_t r = sensor_model_get(SENSOR_ID_LEFT_FRONT);
     sensor_zone_t zone = sensor_model_classify(r.distance_cm);
@@ -176,7 +211,7 @@ void app_main(void) {
 }
 ```
 
-### 2.2 `coreiot_client` — Wi-Fi STA + MQTT (ESP-IDF thuần, callback-based)
+### 2.2 `coreiot_client` — Wi-Fi STA + MQTT (ESP-IDF thuần, callback-based) — **không dùng trên nhánh hiện tại**
 
 Header: [`components/coreiot_client/include/coreiot_client.h`](../firmware/waveshare-screen/components/coreiot_client/include/coreiot_client.h)
 
@@ -217,6 +252,31 @@ void app_main(void) {
 }
 ```
 
+### 2.2b Nhận ESP-NOW trực tiếp (`src/main.c`, đang dùng)
+
+Không phải 1 component riêng — logic nhận nằm thẳng trong [`src/main.c`](../firmware/waveshare-screen/src/main.c) vì `esp_now` là API hệ thống ESP-IDF, không cần wrapper. `WiFi.mode(WIFI_STA)` không gọi `esp_wifi_connect()`, chỉ set channel cố định (khớp `ESPNOW_CHANNEL` bên `sensor-node`) rồi đăng ký callback `esp_now_register_recv_cb(on_data_recv)`.
+
+```c
+static void on_data_recv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+    if (len != sizeof(espnow_sensor_msg_t)) return;
+    espnow_sensor_msg_t msg;
+    memcpy(&msg, data, sizeof(msg));
+
+    if (esp_lv_adapter_lock(100)) {
+        for (int i = 0; i < ESPNOW_SENSOR_SLOT_COUNT; i++) {
+            if (msg.valid[i]) {
+                ui_dashboard_update_sensor((uint8_t)i, (uint16_t)msg.distance_cm[i]);
+            } else {
+                ui_dashboard_clear_sensor((uint8_t)i); // valid=0 = "null", không giữ distance cũ
+            }
+        }
+        esp_lv_adapter_unlock();
+    }
+}
+```
+
+Một `esp_timer` 1s kiểm tra thời điểm nhận gần nhất, gọi `ui_dashboard_set_espnow_status(false)` (badge "ESP-NOW: NO LINK") nếu quá 1.5s không nhận được message nào — thay cho badge Wi-Fi/MQTT của đường CoreIoT cũ.
+
 ### 2.3 `ui_dashboard` — giao diện LVGL 9.1 (800×480)
 
 Header: [`components/ui_dashboard/include/ui_dashboard.h`](../firmware/waveshare-screen/components/ui_dashboard/include/ui_dashboard.h)
@@ -227,19 +287,24 @@ Header: [`components/ui_dashboard/include/ui_dashboard.h`](../firmware/waveshare
 |---|---|
 | `void ui_dashboard_init(void)` | Dựng toàn bộ layout (header, tab COLLISION/SYSTEM, sidebar, canvas xe 2D + 6 arc cảm biến). Gọi 1 lần lúc khởi tạo. |
 | `void ui_dashboard_update_sensor(uint8_t sensor_id, uint16_t dist_cm)` | Cập nhật 1 dòng sidebar + màu/nhấp nháy arc + re-evaluate hazard. `sensor_id`: 0=S1(Front) 1=S2(Rear) 2=S3(Left-Front) 3=S4(Left-Rear) 4=S5(Right-Front) 5=S6(Right-Rear). |
-| `void ui_dashboard_set_iot_status(bool is_connected, const char *ip)` | Cập nhật badge Wi-Fi/MQTT ở header + tab SYSTEM. |
+| `void ui_dashboard_clear_sensor(uint8_t sensor_id)` | Đánh dấu 1 trong 6 cảm biến "không có dữ liệu" (ESP-NOW báo `valid=0` cho slot đó) — sidebar về "-- cm", arc đổi màu xám trung tính, re-evaluate hazard (loại slot này khỏi tính toán). |
+| `void ui_dashboard_set_iot_status(bool is_connected, const char *ip)` | *(không dùng trên nhánh hiện tại)* Cập nhật badge Wi-Fi/MQTT ở header + tab SYSTEM — đường CoreIoT. |
+| `void ui_dashboard_set_espnow_status(bool linked)` | Cập nhật badge header "ESP-NOW: LINKED"/"ESP-NOW: NO LINK" — gọi từ watchdog `esp_timer` trong `main.c` (xem mục 2.2b). |
 | `void ui_dashboard_set_hazard_warning(bool is_pedestrian_crossing_risk)` | Ép hiện banner "CROSSING TRAFFIC HAZARD", độc lập với logic tự động. |
-| `void ui_dashboard_set_relay_state(bool relay_on, const char *warning_status)` | Hiện trạng thái `relay`/`warning_status` do Rule-Chain CoreIoT tính (khác với hazard tự đánh giá cục bộ "OVERALL"). |
+| `void ui_dashboard_set_relay_state(bool relay_on, const char *warning_status)` | *(không dùng trên nhánh hiện tại)* Hiện trạng thái `relay`/`warning_status` do Rule-Chain CoreIoT tính — nhánh hiện tại dùng banner "OVERALL: ..." tự đánh giá cục bộ (`evaluate_hazard()`) thay cho hàm này. |
 | `void ui_dashboard_set_buzzer_state(bool buzzer_on)` | Hiện dòng `BUZZER: ON/OFF`, phản ánh buzzer vật lý điều khiển cục bộ trên `sensor-node`. |
 
 ```c
 #include "ui_dashboard.h"
 #include "esp_lv_adapter.h" // esp_lv_adapter_lock/unlock
 
-void update_from_mqtt(uint8_t sensor_id, uint16_t dist_cm, bool relay_on, const char *status) {
+void update_from_espnow(uint8_t sensor_id, uint16_t dist_cm, bool valid) {
     if (esp_lv_adapter_lock(100)) {   // timeout 100ms, KHÔNG dùng -1 trong callback network
-        ui_dashboard_update_sensor(sensor_id, dist_cm);
-        ui_dashboard_set_relay_state(relay_on, status);
+        if (valid) {
+            ui_dashboard_update_sensor(sensor_id, dist_cm);
+        } else {
+            ui_dashboard_clear_sensor(sensor_id);
+        }
         esp_lv_adapter_unlock();
     }
 }
@@ -251,7 +316,7 @@ void update_from_mqtt(uint8_t sensor_id, uint16_t dist_cm, bool relay_on, const 
 
 Tất cả các mục dưới đây chỉ cần sửa **giá trị hằng số** trong file header, không đụng vào logic xử lý.
 
-### 3.1 Đổi Wi-Fi / MQTT CoreIoT
+### 3.1 Đổi Wi-Fi / MQTT CoreIoT — **không dùng trên nhánh hiện tại**
 
 | Firmware | File | Hằng số |
 |---|---|---|
@@ -268,12 +333,13 @@ Sửa `SENSOR_PINS[]` và `SENSOR_COUNT` trong [`include/Config.h`](../firmware/
 static const SensorPinConfig SENSOR_PINS[] = {
     {5, 6},   // Cảm biến 0 (Trig=GPIO5, Echo=GPIO6)
     {7, 8},   // Cảm biến 1
+    {9, 10},  // Cảm biến 2
     {15, 16}, // Cảm biến mới — thêm 1 dòng {trig, echo}
 };
-static const size_t SENSOR_COUNT = 3;
+static const size_t SENSOR_COUNT = 4;
 ```
 
-`main.cpp` (`sensorTask`, `s_sensors[]`, `s_filters[]`) đọc trực tiếp `SENSOR_COUNT` nên không cần sửa thêm — chỉ cần cập nhật `networkTask` nếu muốn publish cảm biến mới lên MQTT với key JSON riêng (hiện chỉ publish index 0/1 = `left_front`/`right_front`, xem [`src/main.cpp`](../firmware/sensor-node/src/main.cpp) hàm `networkTask`).
+`main.cpp` (`sensorTask`, `s_sensors[]`, `s_filters[]`) đọc trực tiếp `SENSOR_COUNT` nên không cần sửa thêm. Để cảm biến mới xuất hiện trên `waveshare-screen`, phải thêm 1 dòng tương ứng vào `SENSOR_ESPNOW_SLOT[SENSOR_COUNT]` trong [`include/EspNowConfig.h`](../firmware/sensor-node/include/EspNowConfig.h) — chọn slot ESP-NOW (`ESPNOW_SLOT_FRONT/REAR/LEFT_FRONT/LEFT_REAR/RIGHT_FRONT/RIGHT_REAR`) khớp vị trí lắp thật của cảm biến, đúng thứ tự với `SENSOR_PINS[]` (xem [`docs/architecture/ESPNOW_NETWORK.md`](architecture/ESPNOW_NETWORK.md)). Không cần sửa gì phía `waveshare-screen` — cả 6 slot đã được xử lý sẵn trong `on_data_recv()`.
 
 ### 3.3 Tinh chỉnh bộ lọc khoảng cách (Cluster + EMA)
 
@@ -286,14 +352,14 @@ Toàn bộ tham số nằm trong [`include/Config.h`](../firmware/sensor-node/in
 | Xác nhận vật cản mới nhanh hơn (đổi lấy nguy cơ báo giả) | Giảm `JUMP_CONFIRM_COUNT` |
 | Cảm biến lắp gần vật phản xạ nhiễu (tường/kính) | Tăng `BASE_CLUSTER_TOLERANCE_CM` / `MIN_CLUSTER_SIZE` |
 
-### 3.4 Đổi ngưỡng cảnh báo WARNING/DANGER (buzzer + rule-chain + UI)
+### 3.4 Đổi ngưỡng cảnh báo WARNING/DANGER (buzzer + UI)
 
-Ngưỡng phải sửa **đồng bộ ở 2 nơi** để còi vật lý và dashboard không lệch pha:
+Trên nhánh hiện tại (không còn Rule-Chain CoreIoT nhận dữ liệu), buzzer vật lý và banner "OVERALL" trên UI là **2 ngưỡng độc lập, không cần đồng bộ với nhau**:
 
-1. `sensor-node`: `BUZZER_WARNING_DISTANCE_CM`, `BUZZER_DANGER_DISTANCE_CM`, `BUZZER_WARNING_PERIOD_MS`, `BUZZER_DANGER_PERIOD_MS` trong [`include/Config.h`](../firmware/sensor-node/include/Config.h).
-2. CoreIoT Rule-Chain: node script `Process Ultrasonic & Vehicle Data` trong [`cloud/coreiot/rule_chain/supersonic_rule_chain.json`](../cloud/coreiot/rule_chain/supersonic_rule_chain.json) (sửa trực tiếp trên UI CoreIoT hoặc import lại file JSON) — hiện `< 20cm` = DANGER, `<= 50cm` = WARNING.
+1. Buzzer (`sensor-node`): `BUZZER_WARNING_DISTANCE_CM`, `BUZZER_DANGER_DISTANCE_CM`, `BUZZER_WARNING_PERIOD_MS`, `BUZZER_DANGER_PERIOD_MS` trong [`include/Config.h`](../firmware/sensor-node/include/Config.h).
+2. Zone hiển thị (`waveshare-screen`): ngưỡng SAFE/CAUTION/DANGER trong `sensor_model_classify()` ([`components/sensor_model/sensor_model.c`](../firmware/waveshare-screen/components/sensor_model/sensor_model.c)) — hiện là mã nguồn cứng (>100/30–100/<30 cm), muốn đổi phải sửa file `.c` (không phải tham số cấu hình thuần). Banner "OVERALL" (`evaluate_hazard()` trong `ui_dashboard.c`) dùng trực tiếp zone tệ nhất trong 6 cảm biến, không có ngưỡng riêng.
 
-Ngưỡng zone hiển thị (SAFE/CAUTION/DANGER) trên màn hình nằm riêng trong `sensor_model_classify()` ([`components/sensor_model/sensor_model.c`](../firmware/waveshare-screen/components/sensor_model/sensor_model.c)) — hiện là mã nguồn cứng (>100/30–100/<30 cm), muốn đổi phải sửa file `.c` (không phải tham số cấu hình thuần).
+> Đường CoreIoT Rule-Chain (mục 4) vẫn giữ ngưỡng `< 20cm`/`<= 50cm` riêng trong `jsScript`, nhưng **không nhận được dữ liệu** trên nhánh này nên sửa ở đó không ảnh hưởng gì tới thiết bị thật cho tới khi đường MQTT được khôi phục.
 
 ### 3.5 Chọn board / cổng nạp (PlatformIO)
 
@@ -312,6 +378,8 @@ pio device monitor -b 115200 -p COM9   # xem log Serial
 ---
 
 ## 4. Rule-Chain CoreIoT — cấu hình & API node
+
+> **Không dùng trên nhánh hiện tại.** Toàn bộ mục này mô tả đường CoreIoT/Rule-Chain của kiến trúc trước ESP-NOW — `waveshare-screen` không còn nhận MQTT nên rule-chain này hiện không có tác dụng gì với thiết bị thật, dù vẫn export/import được trên CoreIoT. Giữ lại làm tài liệu tham khảo nếu khôi phục đường MQTT sau này.
 
 File cấu hình: [`cloud/coreiot/rule_chain/supersonic_rule_chain.json`](../cloud/coreiot/rule_chain/supersonic_rule_chain.json) — export/import trực tiếp trên UI CoreIoT (**Rule Chains → (chọn chain) → ⋮ → Export/Import**), không có API lập trình riêng (cấu hình thuần bằng JSON + UI kéo-thả).
 
@@ -367,7 +435,7 @@ Output (`msgType: "POST_ATTRIBUTES_REQUEST"`): `{ vehicle_detected, warning_stat
 
 > Bảng schema đầy đủ (kiểu, đơn vị, ví dụ) cho payload này và 2 payload MQTT còn lại của hệ thống: [`docs/architecture/DATA_SCHEMA.md` mục 2](architecture/DATA_SCHEMA.md#2-coreiot-rule-chain--waveshare-screen-mqtt-shared-attributes).
 
-**Đổi ngưỡng cảnh báo**: sửa 2 hằng số `50.0` (ngưỡng WARNING/`vehicle_detected`) và `20.0` (ngưỡng DANGER) trực tiếp trong `jsScript` — trên UI CoreIoT: mở node → tab **JavaScript** → sửa số → **Save** → **Save rule chain**. Đây là ngưỡng phải đồng bộ với `BUZZER_WARNING_DISTANCE_CM`/`BUZZER_DANGER_DISTANCE_CM` phía firmware — xem [mục 3.4](#34-đổi-ngưỡng-cảnh-báo-warningdanger-buzzer--rule-chain--ui).
+**Đổi ngưỡng cảnh báo**: sửa 2 hằng số `50.0` (ngưỡng WARNING/`vehicle_detected`) và `20.0` (ngưỡng DANGER) trực tiếp trong `jsScript` — trên UI CoreIoT: mở node → tab **JavaScript** → sửa số → **Save** → **Save rule chain**. Trên nhánh hiện tại, ngưỡng này **độc lập** với buzzer/UI thật vì rule-chain không nhận dữ liệu — xem [mục 3.4](#34-đổi-ngưỡng-cảnh-báo-warningdanger-buzzer--ui).
 
 **Thêm cảm biến mới** (khi lắp thêm S1/S2/S4/S6): thêm khối `var xxx = typeof msg.xxx !== 'undefined' ? parseFloat(msg.xxx) : null;` cho key mới, đưa vào phép tính `dist = min(...)`, và thêm `if (xxx !== null) { newMsg["xxx"] = xxx; }` ở cuối để `waveshare-screen` nhận được key đó (khớp bảng JSON key ở [`firmware/waveshare-screen/README.md`](../firmware/waveshare-screen/README.md#sensor-layout-truck-no-zone-blind-spot-pattern)).
 

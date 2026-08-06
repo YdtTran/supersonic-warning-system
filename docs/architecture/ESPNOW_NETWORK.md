@@ -40,10 +40,15 @@ typedef struct __attribute__((packed)) {
 
 Ngữ nghĩa `valid[i]=0` tương đương việc payload CoreIoT (JSON) cũ bỏ hẳn key đó
 (`{"left_front":85.3,"right_front":142.0}`) thay vì gửi `0`: cảm biến lỗi/mất
-tín hiệu **hoặc chưa có phần cứng lắp**. Hiện sensor-node chỉ có phần cứng ở
-`left_front` (idx 2, S3) và `right_front` (idx 4, S5) — 4 slot còn lại
-(`front, rear, left_rear, right_rear`) luôn gửi `valid=0`, giữ đúng khung 6
-cảm biến để sẵn sàng mở rộng phần cứng sau này mà không phải đổi lại schema.
+tín hiệu **hoặc chưa có phần cứng lắp**. Hiện sensor-node có phần cứng ở
+`front` (idx 0, S1), `left_front` (idx 2, S3) và `right_front` (idx 4, S5) —
+ánh xạ qua mảng `SENSOR_ESPNOW_SLOT[SENSOR_COUNT]` trong `EspNowConfig.h`
+(đúng thứ tự vật lý `SENSOR_PINS[]` trong `Config.h`). 3 slot còn lại
+(`rear, left_rear, right_rear`) luôn gửi `valid=0`, giữ đúng khung 6 cảm
+biến để sẵn sàng mở rộng phần cứng sau này mà không phải đổi lại schema.
+Mỗi khi thêm/bớt cảm biến vật lý, cập nhật `SENSOR_PINS[]` (`Config.h`) và
+`SENSOR_ESPNOW_SLOT[]` (`EspNowConfig.h`) đồng thời — xem comment tại đầu
+`SENSOR_ESPNOW_SLOT[]`.
 
 Struct này được định nghĩa trùng khớp ở cả 2 phía:
 - `firmware/sensor-node/include/EspNowConfig.h`

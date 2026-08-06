@@ -54,6 +54,14 @@ void sensor_model_init(void);
 void sensor_model_set_distance(sensor_id_t id, uint16_t distance_cm);
 
 /**
+ * @brief Mark a sensor as having no data ("null" reading - sensor-node reported
+ *        valid=0 for this slot, e.g. no hardware wired or a lost echo). Resets
+ *        is_stale to true so callers (hazard evaluation, UI) stop treating the
+ *        last distance_cm as live. Thread-safe.
+ */
+void sensor_model_clear(sensor_id_t id);
+
+/**
  * @brief Read a single sensor's current reading. Thread-safe.
  */
 sensor_reading_t sensor_model_get(sensor_id_t id);

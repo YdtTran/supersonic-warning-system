@@ -15,11 +15,15 @@ struct SensorPinConfig
 };
 
 static const SensorPinConfig SENSOR_PINS[] = {
-    {5, 6}, // Cảm biến 0
-    {7, 8}, // Cảm biến 1
+    {5, 6}, // Cảm biến FRONT
+    {7, 8}, // Cảm biến LR
+    {9, 10} // Cảm biến RF
+    // L REAR
+    // R REAR
+    // REAR
 };
 
-static const size_t SENSOR_COUNT = 2;
+static const size_t SENSOR_COUNT = 3;
 
 // =========================================================
 // CẤU HÌNH CẢM BIẾN JSN-SR04T

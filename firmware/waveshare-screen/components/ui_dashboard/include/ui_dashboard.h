@@ -30,6 +30,17 @@ void ui_dashboard_init(void);
 void ui_dashboard_update_sensor(uint8_t sensor_id, uint16_t dist_cm);
 
 /**
+ * @brief Mark one of the 6 ultrasonic sensors as having no data ("null" reading -
+ *        sensor-node reported valid=0 for this slot, e.g. no hardware wired or a
+ *        lost echo): resets the sidebar row to "-- cm", the 2D arc to a neutral
+ *        color, and re-evaluates the hazard logic so the stale distance is not
+ *        used. Must be called with the LVGL lock held.
+ *
+ * @param sensor_id 0..5, see ui_dashboard_update_sensor()
+ */
+void ui_dashboard_clear_sensor(uint8_t sensor_id);
+
+/**
  * @brief Update the Wi-Fi/MQTT connectivity badge in the header bar. Must be called with the LVGL lock held.
  *
  * @param is_connected true if MQTT/CoreIoT link is up

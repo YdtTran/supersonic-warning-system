@@ -73,6 +73,11 @@ static void on_data_recv(const esp_now_recv_info_t *info, const uint8_t *data, i
         for (int i = 0; i < ESPNOW_SENSOR_SLOT_COUNT; i++) {
             if (msg.valid[i]) {
                 ui_dashboard_update_sensor((uint8_t)i, (uint16_t)msg.distance_cm[i]);
+            } else {
+                // valid=0 is sensor-node's explicit "null" for this slot (no hardware
+                // wired, or the reading was dropped) - clear it instead of leaving the
+                // last stale distance on screen.
+                ui_dashboard_clear_sensor((uint8_t)i);
             }
         }
 

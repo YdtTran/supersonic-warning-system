@@ -12,7 +12,16 @@ Tất cả thay đổi đáng chú ý của dự án `supersonic-sensor-ACLAB` �
 
 ## [Unreleased]
 
-Chưa có mục nào — thêm thay đổi mới vào đây trước khi gắn ngày cụ thể lúc merge vào `main`.
+### Changed
+
+- `sensor-node` và `waveshare-screen` chuyển sang giao tiếp trực tiếp qua **ESP-NOW** (channel cố định, không qua Wi-Fi AP/MQTT/CoreIoT) thay cho publish/subscribe MQTT qua CoreIoT Rule-Chain — xem [`docs/architecture/ESPNOW_NETWORK.md`](docs/architecture/ESPNOW_NETWORK.md). `CoreiotClient`/`coreiot_client`/Rule-Chain vẫn còn trong cây mã nguồn, không bị xoá, để khôi phục sau này.
+- `sensor-node` lắp thêm cảm biến thứ 3 (S1, Front) — `SENSOR_COUNT` 2→3, ánh xạ ESP-NOW qua `SENSOR_ESPNOW_SLOT[]` mới trong `EspNowConfig.h`.
+- `waveshare-screen` tự đánh giá hazard cục bộ ("OVERALL" banner qua `evaluate_hazard()`), không còn phụ thuộc `vehicle_detected`/`warning_status`/`relay` do Rule-Chain CoreIoT tính.
+
+### Added
+
+- `sensor_model_clear()` / `ui_dashboard_clear_sensor()`: đánh dấu 1 cảm biến "no data" khi ESP-NOW báo `valid=0` cho slot đó (arc màu xám trung tính, sidebar "-- cm"), thay vì giữ lại khoảng cách cũ.
+- `ui_dashboard_set_espnow_status()`: badge header "ESP-NOW: LINKED"/"NO LINK", cập nhật bởi watchdog `esp_timer` 1s (ngưỡng mất liên kết 1.5s).
 
 ## [2026-08-04] - Refactor `waveshare-screen` sang PlatformIO/ESP-IDF thuần, buzzer, báo cáo kỹ thuật
 

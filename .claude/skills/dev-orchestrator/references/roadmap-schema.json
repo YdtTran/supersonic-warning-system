@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Orchestrator Roadmap",
+  "type": "object",
+  "required": ["project_name", "total_steps", "roadmap"],
+  "additionalProperties": false,
+  "properties": {
+    "project_name": { "type": "string" },
+    "total_steps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "MUST equal roadmap.length."
+    },
+    "roadmap": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "step_id",
+          "task_title",
+          "target_files",
+          "prerequisites",
+          "objective",
+          "definition_of_done",
+          "verification_command"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "step_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Contiguous from 1. Execution order."
+          },
+          "task_title": { "type": "string", "maxLength": 80 },
+          "target_files": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "description": "Concrete repo-relative file path. No globs, no directories."
+            },
+            "description": "More than 3 files means the step must be split."
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "step_id values, each strictly less than this step_id."
+          },
+          "objective": {
+            "type": "string",
+            "description": "Single responsibility. Include the exact public signature if one is introduced."
+          },
+          "definition_of_done": {
+            "type": "string",
+            "description": "Observable, falsifiable outcome. Not 'works correctly'."
+          },
+          "verification_command": {
+            "type": "string",
+            "description": "Exact shell command, taken verbatim from AGENTS.md where applicable."
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "Optional. 'high' = touches pin mapping, task priorities, protocol shape, or sdkconfig."
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

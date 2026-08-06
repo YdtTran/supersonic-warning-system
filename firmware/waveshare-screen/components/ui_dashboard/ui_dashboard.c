@@ -28,6 +28,7 @@ static const char *TAG = "ui_dashboard";
 #define COLOR_SAFE        0x00C853
 #define COLOR_CAUTION     0xFFD600
 #define COLOR_DANGER      0xFF1744
+#define COLOR_NODATA      0x64748B
 
 // Fast-change threshold (cm) used by the crossing-traffic hazard heuristic.
 #define CROSSING_DELTA_CM 40
@@ -119,6 +120,19 @@ static void arc_set_zone(sensor_arc_t *a, sensor_zone_t zone)
     } else {
         lv_obj_set_style_arc_opa(a->arc, zone == SENSOR_ZONE_SAFE ? (LV_OPA_60) : (LV_OPA_80), LV_PART_INDICATOR);
     }
+}
+
+// Neutral "no data" style for a slot that has never reported or just went from
+// valid=1 to valid=0 - distinct from SENSOR_ZONE_SAFE so an unwired/lost sensor
+// isn't mistaken for "confirmed clear".
+static void arc_set_nodata(sensor_arc_t *a)
+{
+    if (a->blink_running) {
+        lv_anim_delete(a->arc, blink_anim_cb);
+        a->blink_running = false;
+    }
+    lv_obj_set_style_arc_color(a->arc, lv_color_hex(COLOR_NODATA), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_opa(a->arc, LV_OPA_30, LV_PART_INDICATOR);
 }
 
 static lv_obj_t *make_arc(lv_obj_t *parent, int16_t local_x, int16_t local_y, int16_t mid_angle_deg)
@@ -677,6 +691,26 @@ void ui_dashboard_update_sensor(uint8_t sensor_id, uint16_t dist_cm)
 
     if (s_arcs[sensor_id].arc) {
         arc_set_zone(&s_arcs[sensor_id], zone);
+    }
+
+    evaluate_hazard();
+}
+
+void ui_dashboard_clear_sensor(uint8_t sensor_id)
+{
+    if (sensor_id >= SENSOR_MODEL_COUNT) {
+        return;
+    }
+
+    sensor_model_clear((sensor_id_t)sensor_id);
+
+    if (s_rows[sensor_id].row_value_lbl) {
+        lv_label_set_text_fmt(s_rows[sensor_id].row_value_lbl, "%s: -- cm", k_sensor_labels[sensor_id]);
+        lv_obj_set_style_text_color(s_rows[sensor_id].row_value_lbl, lv_color_hex(COLOR_TEXT), 0);
+    }
+
+    if (s_arcs[sensor_id].arc) {
+        arc_set_nodata(&s_arcs[sensor_id]);
     }
 
     evaluate_hazard();

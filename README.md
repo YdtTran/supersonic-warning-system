@@ -1,6 +1,6 @@
-# Vehicle Detection & Warning System using JSN-SR04T Supersonic Sensor & CoreIoT (ACLAB)
+# Vehicle Detection & Warning System using JSN-SR04T Supersonic Sensor & ESP-NOW (ACLAB)
 
-Hệ thống nhúng vi điều khiển **ESP32-S3** phát hiện xe thông qua **cảm biến siêu âm chống nước JSN-SR04T**. Dữ liệu khoảng cách và trạng thái phát hiện xe được gửi lên đám mây **CoreIoT (ThingsBoard)** qua Wi-Fi. Thông qua **Rule-Chain** xử lý sự kiện trên CoreIoT, thông tin phát hiện xe và mức cảnh báo được định tuyến tự động đến mô-đun màn hình cảm ứng **Waveshare ESP32-S3 Touch LCD 7 inch** (`waveshare-screen`) để hiển thị mượt mà trên giao diện đồ họa LVGL.
+Hệ thống nhúng vi điều khiển **ESP32-S3** phát hiện xe thông qua **cảm biến siêu âm chống nước JSN-SR04T**. Trên nhánh hiện tại, khoảng cách đã lọc được gửi **trực tiếp qua ESP-NOW** (đường truyền Wi-Fi cục bộ, không qua cloud) từ mô-đun cảm biến (`sensor-node`) tới mô-đun màn hình cảm ứng **Waveshare ESP32-S3 Touch LCD 7 inch** (`waveshare-screen`), nơi mức cảnh báo được tự đánh giá cục bộ và hiển thị trên giao diện đồ họa LVGL. Đường **CoreIoT (ThingsBoard) + Rule-Chain** của kiến trúc trước đó vẫn còn trong mã nguồn (không bị xoá) nhưng **hiện không hoạt động** — xem [`docs/architecture/ESPNOW_NETWORK.md`](docs/architecture/ESPNOW_NETWORK.md).
 
 ---
 
@@ -8,23 +8,23 @@ Hệ thống nhúng vi điều khiển **ESP32-S3** phát hiện xe thông qua *
 
 ```text
  ┌────────────────────────┐
- │   Cảm biến JSN-SR04T   │ (Cảm biến siêu âm chống nước đo khoảng cách xe)
+ │   Cảm biến JSN-SR04T   │ (Cảm biến siêu âm chống nước đo khoảng cách xe, x3: S1/S3/S5)
  └───────────┬────────────┘
              │ (Echo / Trig GPIO)
              ▼
  ┌────────────────────────┐
- │  ESP32-S3 Sensor Node  │ (firmware/sensor-node: Xử lý khoảng cách, phát hiện xe)
+ │  ESP32-S3 Sensor Node  │ (firmware/sensor-node: đo/lọc khoảng cách, buzzer cục bộ)
  └───────────┬────────────┘
-             │ (Wi-Fi MQTT Telemetry: v1/devices/me/telemetry)
+             │ (ESP-NOW trực tiếp, channel cố định, không qua Wi-Fi AP/cloud)
              ▼
  ┌────────────────────────┐
- │  CoreIoT Cloud Server  │ (app.coreiot.io: Xử lý ngưỡng qua Rule-Chain)
- └───────────┬────────────┘
-             │ (MQTT Subscribe / Rule-Chain Forward)
-             ▼
- ┌────────────────────────┐
- │ Waveshare Screen Node  │ (firmware/waveshare-screen: Hiển thị cảnh báo trực quan trên LCD 7")
+ │ Waveshare Screen Node  │ (firmware/waveshare-screen: tự đánh giá hazard cục bộ, hiển thị LCD 7")
  └────────────────────────┘
+
+ ┌ (không hoạt động trên nhánh này, giữ lại trong mã nguồn) ─────────────┐
+ │ ESP32-S3 Sensor Node → Wi-Fi MQTT → CoreIoT (app.coreiot.io)         │
+ │   Rule-Chain → MQTT Shared Attributes → Waveshare Screen Node        │
+ └────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -50,7 +50,7 @@ supersonic-sensor-ACLAB/
 │   ├── test_mqtt_coreiot.py           # Script mô phỏng phát dữ liệu xe & kiểm tra kết nối CoreIoT
 │   └── plot_ultrasonic_distance.py    # Vẽ đồ thị real-time giá trị khoảng cách đọc qua UART
 ├── firmware/                          # Firmware chính thức (production, PlatformIO cho cả 2 board)
-│   ├── sensor-node/                   # [Project 1] JSN-SR04T x2 (S3/S5) + buzzer cảnh báo (Port mặc định: COM8)
+│   ├── sensor-node/                   # [Project 1] JSN-SR04T x3 (S1/S3/S5) + buzzer cảnh báo, gửi ESP-NOW (Port mặc định: COM8)
 │   │   ├── platformio.ini             # board = yolo_uno, framework = arduino
 │   │   ├── build_and_flash.bat        # Script biên dịch & nạp firmware nhanh (pio run/upload/monitor)
 │   │   └── src/, include/             # sensorTask/networkTask/buzzerTask (FreeRTOS trên Arduino core)
@@ -58,7 +58,7 @@ supersonic-sensor-ACLAB/
 │       ├── platformio.ini             # board = yolo_uno, framework = espidf (thuần, không Arduino)
 │       ├── CMakeLists.txt, sdkconfig.defaults, partitions.csv
 │       ├── build_and_flash.bat        # Script biên dịch & nạp firmware nhanh (pio run, không idf.py trực tiếp)
-│       └── src/, components/          # BSP + sensor_model/coreiot_client/ui_dashboard (layout PlatformIO ESP-IDF)
+│       └── src/, components/          # BSP + sensor_model/ui_dashboard, nhận ESP-NOW trong src/main.c (coreiot_client giữ lại, không dùng)
 ├── prototypes/                        # Firmware thử nghiệm / nghiên cứu (chưa production)
 │   ├── water-level-uart/              # PlatformIO – đo mực nước JSN-SR04T-V3 UART + Kalman/Median-5 filter
 │   └── pulse-read-prototype/          # PlatformIO – đọc xung Trig/Echo trực tiếp GPIO (SR04M-2 Mode 3)
@@ -83,15 +83,16 @@ supersonic-sensor-ACLAB/
 | --- | --- |
 | **Mục lục toàn bộ tài liệu** | [`docs/README.md`](docs/README.md) — điểm vào cho `docs/architecture/`, `docs/logs/`, khoảng trống tài liệu đã biết |
 | Toàn hệ thống | [`report/README.md`](report/README.md) — báo cáo kỹ thuật đầy đủ (kiến trúc, phần cứng, nhật ký phát triển, hạn chế); bản trang trọng: [`report/report.pdf`](report/report.pdf) |
-| **API & cấu hình phần mềm** | [`docs/API_GUIDE.md`](docs/API_GUIDE.md) — API từng thư viện/component (`UltrasonicSensor`, `DistanceFilter`, `CoreiotClient`, `sensor_model`, `coreiot_client`, `ui_dashboard`), ví dụ code, cách đổi Wi-Fi/MQTT/ngưỡng cảnh báo, cách cấu hình Rule-Chain CoreIoT |
+| **ESP-NOW (đường đang dùng)** | [`docs/architecture/ESPNOW_NETWORK.md`](docs/architecture/ESPNOW_NETWORK.md) — schema `espnow_sensor_msg_t`, MAC/channel dùng chung, cách đồng bộ khi đổi board |
+| **API & cấu hình phần mềm** | [`docs/API_GUIDE.md`](docs/API_GUIDE.md) — API từng thư viện/component (`UltrasonicSensor`, `DistanceFilter`, `EspNowClient`, `sensor_model`, `ui_dashboard`; `CoreiotClient`/`coreiot_client`/Rule-Chain không dùng trên nhánh này), ví dụ code, cách đổi ngưỡng cảnh báo |
 | Đóng góp | [`CONTRIBUTING.md`](CONTRIBUTING.md) — quy trình Git, quy ước commit, quy tắc code, ghi log triển khai |
 | Bảo mật | [`SECURITY.md`](SECURITY.md) — vấn đề bảo mật đã biết (token hardcode, MQTT không TLS), cách báo lỗi |
 | Lịch sử thay đổi | [`CHANGELOG.md`](CHANGELOG.md) — tóm tắt thay đổi theo mốc thời gian (Keep a Changelog, chưa có SemVer/tag release) |
-| Quyết định kiến trúc | [`docs/adr/`](docs/adr/) — Architecture Decision Records (PlatformIO thống nhất, ESP-IDF thuần cho `waveshare-screen`, CoreIoT, bộ lọc Cluster+EMA) |
-| Schema dữ liệu | [`docs/architecture/DATA_SCHEMA.md`](docs/architecture/DATA_SCHEMA.md) — schema payload MQTT `sensor-node` ↔ CoreIoT ↔ `waveshare-screen` và struct `sensor_model` |
-| `firmware/sensor-node` | [`firmware/sensor-node/README.md`](firmware/sensor-node/README.md) — đo/lọc 2 cảm biến S3/S5, buzzer cục bộ, publish MQTT |
+| Quyết định kiến trúc | [`docs/adr/`](docs/adr/) — Architecture Decision Records (PlatformIO thống nhất, ESP-IDF thuần cho `waveshare-screen`, CoreIoT lịch sử, bộ lọc Cluster+EMA) |
+| Schema dữ liệu | [`docs/architecture/DATA_SCHEMA.md`](docs/architecture/DATA_SCHEMA.md) — schema payload ESP-NOW `sensor-node` ↔ `waveshare-screen` và struct `sensor_model` (đường MQTT/CoreIoT cũ ghi chú là không hoạt động) |
+| `firmware/sensor-node` | [`firmware/sensor-node/README.md`](firmware/sensor-node/README.md) — đo/lọc 3 cảm biến S1/S3/S5, buzzer cục bộ, gửi ESP-NOW |
 | `firmware/waveshare-screen` | [`firmware/waveshare-screen/README.md`](firmware/waveshare-screen/README.md) — dashboard LVGL 800×480, BSP màn hình/cảm ứng, build & flash, debug serial |
-| `cloud/coreiot/rule_chain/` | [`cloud/coreiot/rule_chain/supersonic_rule_chain.json`](cloud/coreiot/rule_chain/supersonic_rule_chain.json) — chi tiết từng node & cách sửa ngưỡng: [`docs/API_GUIDE.md` mục 4](docs/API_GUIDE.md#4-rule-chain-coreiot--cấu-hình--api-node) |
+| `cloud/coreiot/rule_chain/` (không dùng trên nhánh này) | [`cloud/coreiot/rule_chain/supersonic_rule_chain.json`](cloud/coreiot/rule_chain/supersonic_rule_chain.json) — chi tiết từng node & cách sửa ngưỡng: [`docs/API_GUIDE.md` mục 4](docs/API_GUIDE.md#4-rule-chain-coreiot--cấu-hình--api-node) |
 | `prototypes/pulse-read-prototype` | Đọc trực tiếp Trig/Echo GPIO (SR04M-2 Mode 3) — xem [`report/README.md` mục 8](report/README.md#8-prototype-thử-nghiệm) |
 | `prototypes/water-level-uart` | Đo mực nước JSN-SR04T-V3 UART + Kalman/Median-5 — mã nguồn tại [`prototypes/water-level-uart/`](prototypes/water-level-uart/) |
 | Nhật ký phát triển | [`docs/logs/`](docs/logs/) — theo từng chủ đề (UART GPIO43, SR04M2 driver, dashboard library, session log màn hình, …) |
@@ -108,8 +109,8 @@ supersonic-sensor-ACLAB/
    - Vi điều khiển **ESP32-S3** (Dual-Core 240MHz, Wi-Fi/BLE).
    - **Cảm biến siêu âm chống nước JSN-SR04T** (Kết nối chân Trigger & Echo để đo khoảng cách phát hiện xe).
    - Kết nối cổng Serial/USB (Mặc định: **`COM8`**).
-2. **CoreIoT Server (`app.coreiot.io`)**:
-   - Nền tảng IoT ThingsBoard xử lý luồng dữ liệu thông qua **Rule-Chain**.
+2. **CoreIoT Server (`app.coreiot.io`)** — *(không bắt buộc trên nhánh hiện tại, xem lưu ý ở mục "Luồng Dữ liệu" phía trên)*:
+   - Nền tảng IoT ThingsBoard xử lý luồng dữ liệu thông qua **Rule-Chain**, dùng khi khôi phục lại đường MQTT/CoreIoT.
 3. **Bảng mạch Màn hình Hiển thị Cảnh báo (`waveshare-screen`)**:
    - Màn hình cảm ứng **Waveshare ESP32-S3 Touch LCD 7** (RGB 800x480, 8MB Octal PSRAM).
    - Driver cảm ứng dung kháng GT911 (I2C Fast-mode 400kHz).
@@ -179,7 +180,7 @@ build_and_flash.bat build
 build_and_flash.bat all COM8
 ```
 
-Board này đọc 2 cảm biến S3 (`left_front`)/S5 (`right_front`), publish MQTT 2Hz, và điều khiển **buzzer vật lý** (GPIO48) cục bộ theo ngưỡng WARNING (3s/lần, <50cm)/DANGER (1s/lần, <20cm) — không qua round-trip cloud để giữ độ trễ thấp. Chi tiết: [firmware/sensor-node/README.md](firmware/sensor-node/README.md).
+Board này đọc 3 cảm biến S1 (`front`)/S3 (`left_front`)/S5 (`right_front`), gửi khoảng cách qua **ESP-NOW** trực tiếp tới `waveshare-screen` 2Hz (không qua Wi-Fi AP/MQTT/cloud), và điều khiển **buzzer vật lý** (GPIO48) cục bộ theo ngưỡng WARNING (3s/lần, <50cm)/DANGER (1s/lần, <20cm) — hoàn toàn độc lập với ESP-NOW để giữ độ trễ thấp. Chi tiết: [firmware/sensor-node/README.md](firmware/sensor-node/README.md).
 
 ### B. Mô-đun Màn hình (`firmware/waveshare-screen`, PlatformIO + ESP-IDF thuần)
 
@@ -197,7 +198,10 @@ Board này dùng `framework = espidf` thuần (không Arduino) do driver LCD/LVG
 
 ---
 
-## 🧪 4. Kiểm thử Kết nối MQTT CoreIoT bằng Python
+## 🧪 4. Kiểm thử Kết nối MQTT CoreIoT bằng Python (không dùng trên nhánh hiện tại)
+
+> Script này kiểm thử đường MQTT/CoreIoT cũ — trên nhánh hiện tại, `sensor-node` không publish MQTT nữa (xem mục "Luồng Dữ liệu" ở đầu file), nên script chỉ hữu ích khi làm việc với đường CoreIoT được khôi phục lại.
+
 Sử dụng script đi kèm để mô phỏng phát dữ liệu phát hiện xe lên CoreIoT server (tự động đọc token từ `config/keys.json`):
 
 ```powershell

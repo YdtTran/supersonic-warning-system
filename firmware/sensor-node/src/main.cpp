@@ -24,15 +24,15 @@
 #include "UltrasonicSensor.h"
 #include "DistanceFilter.h"
 #include "SharedState.h"
-#include "CoreiotConfig.h"
-#include "CoreiotClient.h"
+#include "EspNowConfig.h"
+#include "EspNowClient.h"
 
 static TaskHandle_t s_sensorTaskHandle = nullptr;
 static TaskHandle_t s_appTaskHandle = nullptr;
 static TaskHandle_t s_networkTaskHandle = nullptr;
 static TaskHandle_t s_buzzerTaskHandle = nullptr;
 
-static CoreiotClient s_coreiotClient;
+static EspNowClient s_espNowClient;
 
 // Mảng tĩnh, kích thước cố định = SENSOR_COUNT (Config.h) - không dùng
 // std::vector nên không có cấp phát heap/mảnh vụn bộ nhớ khi chạy.
@@ -258,52 +258,46 @@ static void buzzerTask(void *pvParameters)
 
 // =========================================================
 // NETWORK TASK
-// Kết nối WiFi/MQTT tới CoreIoT và publish khoảng cách đã lọc
-// của S3 (left_front, index 0) và S5 (right_front, index 1)
-// mỗi COREIOT_PUBLISH_INTERVAL_MS. Tách khỏi core 1 (sensorTask/
-// appTask) để publish MQTT không ảnh hưởng timing đo cảm biến.
+// Gửi khoảng cách đã lọc trực tiếp tới waveshare-screen qua ESP-NOW mỗi
+// ESPNOW_SEND_INTERVAL_MS - KHÔNG kết nối WiFi AP/MQTT tới CoreIoT trong
+// nhánh này (tránh xung đột WiFi channel với ESP-NOW, xem
+// docs/architecture/ESPNOW_NETWORK.md). Tách khỏi core 1 (sensorTask/
+// appTask) để gửi ESP-NOW không ảnh hưởng timing đo cảm biến.
 // =========================================================
 
 static void networkTask(void *pvParameters)
 {
-    s_coreiotClient.begin();
+    s_espNowClient.begin();
 
-    uint32_t lastPublishMs = 0;
+    uint32_t lastSendMs = 0;
 
     for (;;)
     {
-        s_coreiotClient.loop();
-
         uint32_t now = millis();
-        if (now - lastPublishMs >= COREIOT_PUBLISH_INTERVAL_MS)
+        if (now - lastSendMs >= ESPNOW_SEND_INTERVAL_MS)
         {
-            lastPublishMs = now;
+            lastSendMs = now;
 
-            float leftFrontCm, rightFrontCm;
-            bool hasLeftFront = sharedStateGet(0, leftFrontCm);
-            bool hasRightFront = sharedStateGet(1, rightFrontCm);
+            // Message luôn mang đủ ESPNOW_SENSOR_SLOT_COUNT (6) vị trí
+            // cảm biến để khớp mô hình sensor_model/ui_dashboard bên
+            // waveshare-screen. Chỉ SENSOR_COUNT slot có phần cứng thật
+            // trên board này (ánh xạ qua SENSOR_ESPNOW_SLOT) được set
+            // valid=1; các slot còn lại giữ nguyên valid=0 ("null") -
+            // waveshare-screen hiển thị "--" cho các slot đó.
+            espnow_sensor_msg_t msg = {};
 
-            if (hasLeftFront || hasRightFront)
+            for (size_t i = 0; i < SENSOR_COUNT; ++i)
             {
-                char payload[96];
-                if (hasLeftFront && hasRightFront)
+                float distanceCm;
+                uint8_t slot = SENSOR_ESPNOW_SLOT[i];
+                if (sharedStateGet(i, distanceCm))
                 {
-                    snprintf(payload, sizeof(payload),
-                             "{\"left_front\":%.1f,\"right_front\":%.1f}",
-                             leftFrontCm, rightFrontCm);
+                    msg.distance_cm[slot] = distanceCm;
+                    msg.valid[slot] = 1;
                 }
-                else if (hasLeftFront)
-                {
-                    snprintf(payload, sizeof(payload), "{\"left_front\":%.1f}", leftFrontCm);
-                }
-                else
-                {
-                    snprintf(payload, sizeof(payload), "{\"right_front\":%.1f}", rightFrontCm);
-                }
-
-                s_coreiotClient.publishTelemetry(payload);
-                // Serial.printf("[NET] Publish %s: %s\n", ok ? "OK" : "FAILED", payload);
             }
+
+            s_espNowClient.sendReading(msg);
         }
 
         vTaskDelay(pdMS_TO_TICKS(20));
