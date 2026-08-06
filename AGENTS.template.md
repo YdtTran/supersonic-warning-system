@@ -122,5 +122,25 @@ Quy tắc bắt buộc sau khi hoàn thành triển khai (implement/fix/refactor
 - Mỗi khi thực hiện xong một nhiệm vụ/tính năng/sửa lỗi, Agent bắt buộc phải tạo hoặc cập nhật một file log Markdown với tên phù hợp mô tả công việc (ví dụ: `docs/logs/<COMPONENT>_<TASK_NAME>_LOG.md`).
 - Nội dung file log phải ghi rõ: mục tiêu công việc, các file đã chỉnh sửa, kết quả kiểm thử (build/flash/monitor logs), và hướng dẫn vận hành/chạy demo.
 
+## Default workflow: dev-orchestrator
+
+For **any** request that is more than a single-file edit — a new feature, a refactor, a
+migration, a pasted plan, or anything phrased as "kế hoạch / phân rã / break this down" —
+invoke the `dev-orchestrator` skill **before writing code**.
+
+```
+Skill(skill="dev-orchestrator")
+```
+
+It defines the two operating modes used in this repo:
+
+- **MODE 1 — Decomposition:** produce `docs/roadmaps/<slug>.roadmap.json` + an executive
+  summary of atomic steps (1–3 files each, every step independently verifiable).
+- **MODE 2 — Worker Execution Prompt:** on "execute step N", render a cold-context-safe
+  payload for a Worker Agent, then verify its DoD and update
+  `docs/roadmaps/<slug>.state.md`.
+
+Skip it only for trivial one-liners, pure questions, or reading/inspection tasks.
+
 
 
