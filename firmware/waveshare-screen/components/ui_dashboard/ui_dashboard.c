@@ -14,7 +14,6 @@
 #include "esp_flash.h"
 #include "esp_app_desc.h"
 #include "esp_timer.h"
-#include "driver/gpio.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -35,12 +34,9 @@ static const char *TAG = "ui_dashboard";
 #define CROSSING_DELTA_CM 40
 #define CROSSING_FRONT_THRESHOLD_CM 150
 
-// Physical buzzer wired directly on the waveshare-screen board itself (separate from the
-// sensor-node's own local buzzer). GPIO2 was tried first and doesn't work here - it's already
-// claimed by the RGB LCD panel (EXAMPLE_LCD_IO_RGB_DATA12, see waveshare_rgb_lcd_port.h).
-// GPIO11 is unused by the LCD/touch/I2C pinout and free.
-#define BUZZER_GPIO_NUM GPIO_NUM_11
-#define BUZZER_TOGGLE_PERIOD_MS 1000
+// No buzzer is driven from this board: the physical alarm lives on sensor-node (BUZZER_PIN,
+// Config.h) so it stays independent of the ESP-NOW link. The "Mute Alarm" button here only
+// silences the on-screen DANGER blink - see mute_btn_cb().
 
 typedef struct {
     lv_obj_t *arc;
