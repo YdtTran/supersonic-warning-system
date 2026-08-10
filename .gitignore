@@ -56,3 +56,18 @@ ehthumbs.db
 __pycache__/
 *.pyc
 *.pyo
+
+# ==========================================
+# LaTeX Build Artifacts (report/)
+# Giữ lại report.tex và report.pdf; bỏ qua file trung gian
+# do pdflatex sinh ra mỗi lần biên dịch.
+# ==========================================
+*.aux
+*.toc
+*.out
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+report/*.log

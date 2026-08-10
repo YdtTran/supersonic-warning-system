@@ -1,6 +1,8 @@
-# Báo cáo Kỹ thuật — Hệ thống Cảnh báo Va chạm bằng Cảm biến Siêu âm JSN-SR04T & CoreIoT
+# Báo cáo Kỹ thuật — Hệ thống Cảnh báo Va chạm bằng Cảm biến Siêu âm JSN-SR04T & ESP-NOW
 
 > Tài liệu này là bản báo cáo **đầy đủ** (kèm nhật ký phát triển, sự cố đã gặp và hạn chế hiện tại) của dự án [`supersonic-sensor-ACLAB`](https://github.com/YdtTran/supersonic-warning-system). Bản báo cáo **trang trọng, chỉ mô tả hệ thống ở trạng thái hiện tại** (không có log/lịch sử) nằm ở [`report.tex`](report.tex) / [`report.pdf`](report.pdf), biên dịch bằng pdflatex (MiKTeX).
+>
+> ⚠️ **Lưu ý kiến trúc**: hệ thống đã **chuyển từ đường MQTT/CoreIoT sang ESP-NOW trực tiếp** giữa 2 board (xem [mục 5.3](#53-kết-nối-esp-now-đường-truyền-hiện-tại) và [mục 9.9](#99-chuyển-sang-esp-now--gỡ-bỏ-phụ-thuộc-cloud)). Các mục mô tả CoreIoT/Rule-Chain (mục 6.1 và [mục 7](#7-cloud-coreiot-rule-chain)) được giữ lại làm **bối cảnh lịch sử** — code vẫn còn trong cây nguồn nhưng không được gọi trên nhánh hiện tại.
 >
 > Tài liệu này tập trung vào **kiến trúc, quyết định thiết kế và lịch sử phát triển**. Để tra cứu **API từng thư viện/component** (chữ ký hàm, ví dụ code) và **hướng dẫn cấu hình bằng phần mềm** (đổi Wi-Fi/MQTT, thêm cảm biến, đổi ngưỡng cảnh báo, cấu hình Rule-Chain), xem [`docs/API_GUIDE.md`](../docs/API_GUIDE.md).
 
@@ -14,7 +16,7 @@
 4. [Công cụ & Framework](#4-công-cụ--framework)
 5. [Firmware `sensor-node`](#5-firmware-sensor-node)
 6. [Firmware `waveshare-screen`](#6-firmware-waveshare-screen)
-7. [Cloud CoreIoT (Rule-Chain)](#7-cloud-coreiot-rule-chain)
+7. [Cloud CoreIoT (Rule-Chain)](#7-cloud-coreiot-rule-chain) — *không dùng trên nhánh hiện tại*
 8. [Prototype thử nghiệm](#8-prototype-thử-nghiệm)
 9. [Nhật ký & lịch sử phát triển](#9-nhật-ký--lịch-sử-phát-triển)
 10. [Hạn chế & việc cần làm thêm](#10-hạn-chế--việc-cần-làm-thêm)
@@ -24,7 +26,9 @@
 
 ## 1. Giới thiệu & Mục tiêu
 
-Dự án xây dựng hệ thống nhúng phát hiện vật cản/xe cộ ở khoảng cách gần bằng **cảm biến siêu âm chống nước JSN-SR04T**, gắn trên vi điều khiển **ESP32-S3 (board Yolo:Uno)**. Dữ liệu khoảng cách được gửi lên nền tảng IoT **CoreIoT (ThingsBoard)** qua MQTT, xử lý ngưỡng cảnh báo bằng **Rule-Chain**, và định tuyến kết quả xuống **màn hình cảm ứng Waveshare ESP32-S3 Touch LCD 7"** để hiển thị trực quan (dashboard va chạm kiểu "no-zone" quanh xe) đồng thời điều khiển còi cảnh báo vật lý.
+Dự án xây dựng hệ thống nhúng phát hiện vật cản/xe cộ ở khoảng cách gần bằng **cảm biến siêu âm chống nước JSN-SR04T**, gắn trên vi điều khiển **ESP32-S3 (board Yolo:Uno)**. Khoảng cách đã lọc được gửi **trực tiếp qua ESP-NOW** (liên kết Wi-Fi cục bộ giữa 2 board, không qua AP/router/cloud) sang **màn hình cảm ứng Waveshare ESP32-S3 Touch LCD 7"**, nơi ngưỡng cảnh báo được **tự đánh giá cục bộ trên thiết bị** và hiển thị trực quan (dashboard va chạm kiểu "no-zone" quanh xe); còi cảnh báo vật lý được điều khiển ngay trên `sensor-node`.
+
+Phiên bản trước đó định tuyến dữ liệu qua **CoreIoT (ThingsBoard)** bằng MQTT + **Rule-Chain** — kiến trúc này đã được thay thế để loại bỏ phụ thuộc hạ tầng mạng và giảm độ trễ cảnh báo (xem [mục 9.9](#99-chuyển-sang-esp-now--gỡ-bỏ-phụ-thuộc-cloud)); mã nguồn CoreIoT vẫn được giữ lại trong cây nguồn để có thể khôi phục.
 
 Ý tưởng gốc (xem `architecture.png`) là hệ thống 6 cảm biến bao quanh toàn bộ xe (trước/sau/4 góc) kết hợp cảnh báo cho người đi đường. **Hệ thống hiện tại đã triển khai đủ 6/6 cảm biến** (S1 – trước, S2 – sau, S3/S4 – hông trái, S5/S6 – hông phải) trên phần cứng thật; phần cảnh báo cho người đi đường bên ngoài xe **vẫn đang chờ bổ sung phần cứng**, không phải là thu hẹp phạm vi dự án.
 
@@ -39,19 +43,22 @@ Dự án xây dựng hệ thống nhúng phát hiện vật cản/xe cộ ở kh
  ┌────────────────────────┐
  │  ESP32-S3 Sensor Node  │  firmware/sensor-node — đo, lọc nhiễu, còi báo cục bộ
  └───────────┬────────────┘
-             │ Wi-Fi MQTT (v1/devices/me/telemetry)
+             │ ESP-NOW trực tiếp (channel 1 cố định, 30 bytes/gói, 2Hz)
+             │ KHÔNG qua Wi-Fi AP / router / cloud
              ▼
  ┌────────────────────────┐
- │  CoreIoT Cloud Server  │  app.coreiot.io — Rule-Chain tính ngưỡng WARNING/DANGER
- └───────────┬────────────┘
-             │ MQTT Shared Attributes (đổi originator sang waveshare-screen)
-             ▼
- ┌────────────────────────┐
- │ Waveshare Screen Node  │  firmware/waveshare-screen — dashboard LVGL 800x480
- └────────────────────────┘
+ │ Waveshare Screen Node  │  firmware/waveshare-screen — tự đánh giá hazard cục bộ,
+ └────────────────────────┘  dashboard LVGL 800x480
 ```
 
-Sơ đồ ý tưởng gốc (6 cảm biến bao quanh xe, đề xuất ban đầu của nhóm — **chưa phải hiện trạng phần cứng**):
+Kiến trúc cũ (**không còn hoạt động trên nhánh này**, giữ lại trong cây nguồn):
+
+```text
+ ESP32-S3 Sensor Node → Wi-Fi MQTT → CoreIoT (app.coreiot.io)
+   → Rule-Chain tính ngưỡng → MQTT Shared Attributes → Waveshare Screen Node
+```
+
+Sơ đồ ý tưởng gốc (6 cảm biến bao quanh xe kèm cảnh báo cho người đi đường — phần cảm biến **đã triển khai đủ**, phần cảnh báo ngoài xe chưa):
 
 ![Kiến trúc ý tưởng ban đầu](./architecture.png)
 
@@ -79,10 +86,11 @@ Sơ đồ ý tưởng gốc (6 cảm biến bao quanh xe, đề xuất ban đầ
 | Hạng mục | Lựa chọn | Lý do |
 |---|---|---|
 | Build system | **PlatformIO** (`pio run -e yolo_uno`) cho cả 2 firmware | Layout thống nhất (`src/`, `boards/`, `platformio.ini`, `build_and_flash.bat`), một toolchain quản lý cả 2 dự án khác framework. |
-| `sensor-node` | `framework = arduino` | Tái sử dụng hệ sinh thái thư viện Arduino-ESP32 sẵn có (`WiFi.h`, `PubSubClient`) — đủ dùng cho tác vụ đo/lọc/publish MQTT đơn giản, không cần driver màn hình phức tạp. |
+| `sensor-node` | `framework = arduino` | Tái sử dụng hệ sinh thái thư viện Arduino-ESP32 sẵn có (`WiFi.h`, `esp_now.h`) — đủ dùng cho tác vụ đo/lọc/gửi ESP-NOW, không cần driver màn hình phức tạp. |
 | `waveshare-screen` | `framework = espidf` **thuần** (không Arduino) | **Quyết định kiến trúc quan trọng**: driver màn hình/cảm ứng hiện đại (`esp_lvgl_adapter`, `esp_lcd_touch_gt911` bản mới, API I2C `i2c_master.h`, LVGL 9.1, `esp_lcd_panel_rgb` với `num_fbs`/bounce-buffer) đòi hỏi **ESP-IDF ≥ 5.5**, trong khi tổ hợp `framework = arduino, espidf` của PlatformIO chỉ cấp **ESP-IDF 4.4.7** — không tương thích. Xem chi tiết quá trình quyết định ở [mục 9](#9-nhật-ký--lịch-sử-phát-triển). |
 | Đồ hoạ UI | **LVGL 9.1** + `espressif/esp_lvgl_adapter` | Thư viện GUI nhúng mã nguồn mở phổ biến nhất cho ESP32, adapter chính thức của Espressif quản lý sẵn vòng lặp render + khoá luồng an toàn. |
-| Cloud IoT | **CoreIoT (ThingsBoard)** | Nền tảng MQTT-native miễn phí, có sẵn Rule-Chain kéo-thả để xử lý ngưỡng cảnh báo mà không cần viết backend riêng. |
+| Liên kết 2 board | **ESP-NOW** (lớp 2, trên nền Wi-Fi radio) | Không cần AP/router/broker → hệ thống chạy được cả khi không có mạng, độ trễ mỗi gói dưới ~10ms, phù hợp cảnh báo va chạm thời gian thực. |
+| Cloud IoT *(không còn dùng)* | **CoreIoT (ThingsBoard)** | Nền tảng MQTT-native miễn phí, Rule-Chain kéo-thả xử lý ngưỡng không cần backend riêng. Đã thay bằng ESP-NOW + đánh giá hazard cục bộ (mục 9.9). |
 | Biên dịch báo cáo | **MiKTeX + pdflatex** (đã cài sẵn) | Dùng để build `report.tex` → `report.pdf`. |
 
 ## 5. Firmware `sensor-node`
@@ -121,21 +129,33 @@ Lý do dùng cluster+EMA thay vì lọc trung vị đơn giản: cảm biến si
 
 > Cách tinh chỉnh các tham số này (làm mượt hơn/phản ứng nhanh hơn, thêm cảm biến, đổi Wi-Fi/MQTT) không cần sửa logic: [`docs/API_GUIDE.md` mục 3](../docs/API_GUIDE.md#3-cấu-hình-bằng-phần-mềm--không-cần-sửa-code-logic).
 
-### 5.3 Kết nối CoreIoT (MQTT)
+### 5.3 Kết nối ESP-NOW (đường truyền hiện tại)
 
-[`firmware/sensor-node/src/CoreiotClient.cpp`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/CoreiotClient.cpp) dùng `WiFi.h` (STA mode) + `PubSubClient`: kết nối MQTT broker CoreIoT với **access token làm username, không cần password** (chuẩn ThingsBoard), publish JSON `{"left_front":..,"right_front":..}` lên topic telemetry mỗi 2 giây (2Hz), tự thử kết nối lại khi mất kết nối (không gọi lại `WiFi.begin()` liên tục để tránh reset trạng thái đang thử kết nối nền của STA mode).
+[`firmware/sensor-node/src/EspNowClient.cpp`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/EspNowClient.cpp) gửi trực tiếp tới MAC của `waveshare-screen` bằng `esp_now_send()`:
+
+- `WiFi.mode(WIFI_STA)` chỉ để **mở radio Wi-Fi**, không gọi `WiFi.begin()` — không kết nối AP nào, không broker, không phụ thuộc hạ tầng mạng.
+- Channel cố định **1** (phải khớp 2 board); MAC đích khai báo ở `ESPNOW_PEER_MAC` (`EspNowConfig.h`).
+- Payload là **struct nhị phân packed** `espnow_sensor_msg_t` (`float[6]` + `uint8_t[6]` = **30 bytes**, không phải JSON), luôn mang đủ 6 slot; `valid[i]=0` biểu thị slot đang mất tín hiệu.
+- Tần suất gửi 500ms (2Hz), tách biệt với chu kỳ đo/lọc cục bộ 100ms — bộ lọc vẫn phản ứng nhanh cho cảnh báo, chỉ giảm tải đường truyền.
+
+So với đường MQTT/CoreIoT trước đây, ESP-NOW bỏ hoàn toàn các bước AP association/DHCP/broker nên độ trễ mỗi gói xuống dưới ~10ms và hệ thống **hoạt động được cả khi không có mạng** — đúng yêu cầu của một hệ cảnh báo va chạm gắn trên xe di chuyển.
+
+> Thông số kỹ thuật đầy đủ (tầm hoạt động, giới hạn payload/peer, ACK & độ tin cậy, bảo mật): [`docs/architecture/ESPNOW_NETWORK.md`](../docs/architecture/ESPNOW_NETWORK.md).
 
 ### 5.4 Buzzer cảnh báo cục bộ
 
-Ngưỡng đồng bộ với Rule-Chain phía server (cùng công thức để không lệch pha giữa còi vật lý và hiển thị màn hình):
+Ngưỡng nằm hoàn toàn trong [`Config.h`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/include/Config.h) trên `sensor-node` (không còn bản sao trên Rule-Chain vì đường cloud đã ngừng dùng — không còn nguy cơ trôi lệch ngưỡng giữa 2 nơi):
 
 - **WARNING** (20–50 cm): kêu 1 lần mỗi 3 giây.
 - **DANGER** (< 20 cm): kêu 1 lần mỗi 1 giây.
 - Độ dài mỗi tiếng kêu: 120 ms, không chặn (non-blocking, dùng `millis()`).
+- Chân còi: **GPIO 11** (trước đây GPIO 48 — phải đổi vì trùng chân Echo của cảm biến REAR khi mở rộng lên 6 cảm biến).
 
 ## 6. Firmware `waveshare-screen`
 
-### 6.1 [`coreiot_client`](https://github.com/YdtTran/supersonic-warning-system/tree/main/firmware/waveshare-screen/components/coreiot_client) — kết nối mạng thuần ESP-IDF
+### 6.1 [`coreiot_client`](https://github.com/YdtTran/supersonic-warning-system/tree/main/firmware/waveshare-screen/components/coreiot_client) — kết nối mạng thuần ESP-IDF *(không dùng trên nhánh hiện tại)*
+
+> **Không được gọi từ `src/main.c` trên nhánh này** — đường nhận dữ liệu hiện tại là ESP-NOW (xem [mục 6.5](#65-nhận-dữ-liệu-esp-now--đánh-giá-hazard-cục-bộ-đường-truyền-hiện-tại)). Component vẫn còn trong cây nguồn để khôi phục MQTT sau này; phần mô tả dưới đây giữ nguyên làm tài liệu tham chiếu.
 
 Không dùng Arduino core nên không có `WiFi.h`/`PubSubClient` — thay bằng API ESP-IDF gốc:
 
@@ -152,7 +172,7 @@ Struct 6 cảm biến (`SENSOR_MODEL_COUNT`), mỗi phần tử gồm `distance_
 
 Widget sử dụng: `lv_arc_*` (6 cung "chùm sóng" quanh sơ đồ xe), `lv_label_set_text_fmt` (số liệu động), `lv_anim_*` (hiệu ứng nhấp nháy vùng nguy hiểm), `lv_timer_create` (refresh thông tin hệ thống mỗi 2s), layout flex (`lv_obj_set_flex_flow/align`). Tab COLLISION/SYSTEM được tự dựng bằng 2 nút + `LV_OBJ_FLAG_HIDDEN` (không dùng `lv_tabview` có sẵn của LVGL, để tuỳ biến giao diện dễ hơn).
 
-**Cơ chế khoá luồng** `esp_lv_adapter_lock()`/`unlock()`: vì các callback Wi-Fi/MQTT chạy trên task khác với task LVGL (esp_lv_adapter chạy LVGL trong task riêng, stack 12KB trong PSRAM), mọi thao tác cập nhật UI từ `NetworkTask` phải khoá trước khi gọi API LVGL. Ban đầu dùng timeout vô hạn (`-1`) — tiềm ẩn treo toàn hệ thống nếu task LVGL bị kẹt; đã sửa thành `LV_LOCK_TIMEOUT_TICKS = pdMS_TO_TICKS(100)` cho mọi lần khoá từ network callback. Riêng lần khoá lúc khởi tạo UI trong `app_main()` (trước khi `NetworkTask` chạy, không có tranh chấp) vẫn giữ `-1`.
+**Cơ chế khoá luồng** `esp_lv_adapter_lock()`/`unlock()`: vì callback nhận dữ liệu mạng (hiện là `on_data_recv` của ESP-NOW; trước đây là callback Wi-Fi/MQTT) chạy trên task khác với task LVGL (esp_lv_adapter chạy LVGL trong task riêng, stack 12KB trong PSRAM), mọi thao tác cập nhật UI từ callback đó phải khoá trước khi gọi API LVGL. Ban đầu dùng timeout vô hạn (`-1`) — tiềm ẩn treo toàn hệ thống nếu task LVGL bị kẹt; đã sửa thành `LV_LOCK_TIMEOUT_TICKS = pdMS_TO_TICKS(100)` cho mọi lần khoá từ network callback. Riêng lần khoá lúc khởi tạo UI trong `app_main()` (trước khi task mạng chạy, không có tranh chấp) vẫn giữ `-1`.
 
 > API chi tiết + ví dụ code của `sensor_model`, `coreiot_client`, `ui_dashboard`: [`docs/API_GUIDE.md` mục 2](../docs/API_GUIDE.md#2-firmwarewaveshare-screen-esp-idf--component-dashboard).
 
@@ -165,7 +185,18 @@ Widget sử dụng: `lv_arc_*` (6 cung "chùm sóng" quanh sơ đồ xe), `lv_la
 - **CH422G**: không có driver ESP-IDF riêng, điều khiển bằng ghi thanh ghi thô qua địa chỉ I2C `0x24`/`0x38` (backlight, reset cảm ứng, CS thẻ SD, MUX CAN).
 - **GT911**: dùng driver chính thức `esp_lcd_touch_gt911.h` — `esp_lcd_new_panel_io_i2c()` + `ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG()` + `esp_lcd_touch_new_i2c_gt911()`.
 
+### 6.5 Nhận dữ liệu ESP-NOW & đánh giá hazard cục bộ (đường truyền hiện tại)
+
+Logic nhận ESP-NOW nằm trực tiếp trong [`src/main.c`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/waveshare-screen/src/main.c), **không tách thành component riêng** — `esp_now` là API hệ thống của ESP-IDF, không cần lớp bọc như `coreiot_client`:
+
+- `networkTask` khởi tạo Wi-Fi STA "trần" (không kết nối AP), cố định channel 1, rồi đăng ký `esp_now_register_recv_cb(on_data_recv)`.
+- `on_data_recv()` kiểm tra đúng kích thước gói, sau đó với mỗi slot gọi `ui_dashboard_update_sensor()` (khi `valid=1`) hoặc `ui_dashboard_clear_sensor()` (khi `valid=0`), toàn bộ trong `esp_lv_adapter_lock(100ms)` vì callback chạy ngoài task LVGL.
+- `evaluate_hazard()` trong `ui_dashboard.c` **tự tính banner "OVERALL"** từ 6 slot, bỏ qua slot `is_stale` — thay cho `warning_status`/`relay` mà Rule-Chain từng tính trên cloud.
+- **Watchdog liên kết**: `esp_timer` chu kỳ 1s kiểm tra thời gian từ gói cuối; quá 1.5s không nhận được gì thì badge header chuyển "ESP-NOW: NO LINK". Đây là phần bù cho việc ESP-NOW không có heartbeat sẵn ở tầng giao thức.
+
 ## 7. Cloud CoreIoT (Rule-Chain)
+
+> Toàn bộ mục này mô tả kiến trúc **trước khi chuyển sang ESP-NOW** ([mục 9.9](#99-chuyển-sang-esp-now--gỡ-bỏ-phụ-thuộc-cloud)). Rule-Chain không còn nằm trên đường dữ liệu; giữ lại làm tài liệu tham chiếu và để khôi phục nếu cần publish MQTT song song sau này.
 
 ![Rule-Chain CoreIoT](./rule-chain.png)
 
@@ -225,13 +256,44 @@ Rule-chain cloud emit thêm field `buzzer` đồng bộ với `relay`; `sensor-n
 
 Hiện SSID Wi-Fi đang kết nối, và tab SYSTEM đầy đủ thông tin key CoreIoT (đã che token), firmware version, IDF version, flash/heap/uptime.
 
+### 9.9 Chuyển sang ESP-NOW & gỡ bỏ phụ thuộc cloud
+
+Thay toàn bộ đường `sensor-node → Wi-Fi/MQTT → CoreIoT → MQTT shared attributes → waveshare-screen` bằng **ESP-NOW trực tiếp giữa 2 board**. Lý do: một hệ cảnh báo va chạm gắn trên xe không nên phụ thuộc vào sóng Wi-Fi AP/Internet, và round-trip qua cloud thêm độ trễ không cần thiết cho tình huống cần phản hồi tức thì.
+
+Ràng buộc kỹ thuật đáng chú ý: ESP-NOW và Wi-Fi STA dùng chung radio, nên **không thể vừa kết nối AP vừa giữ ESP-NOW ổn định** nếu channel của AP khác channel ESP-NOW. Vì vậy `sensor-node` **ngắt hẳn** kết nối MQTT/CoreIoT trên nhánh này thay vì chạy song song. Hệ quả kéo theo: `waveshare-screen` phải **tự đánh giá hazard cục bộ** (`evaluate_hazard()`) thay cho `warning_status`/`relay` do Rule-Chain tính; đổi lại, ngưỡng cảnh báo giờ chỉ tồn tại một nơi duy nhất nên không còn nguy cơ trôi lệch giữa firmware và cloud.
+
+Vì 2 project dùng build system khác nhau (PlatformIO/Arduino vs ESP-IDF) và không share include path, struct `espnow_sensor_msg_t` phải được khai báo **trùng khớp thủ công** ở cả 2 phía — [`docs/architecture/ESPNOW_NETWORK.md`](../docs/architecture/ESPNOW_NETWORK.md) là nguồn thông tin dùng chung duy nhất cho MAC/channel/schema.
+
+### 9.10 Mở rộng đủ 6 cảm biến & sự cố GPIO 47/48 bị PSRAM chiếm dụng
+
+Khi lắp nốt 3 cảm biến còn lại (L REAR, R REAR, REAR), cảm biến REAR đấu ở GPIO 47/48 **không bao giờ trả về dữ liệu** dù đèn tín hiệu trên module vẫn nháy bình thường. Quá trình chẩn đoán đi qua 3 lớp nguyên nhân chồng lên nhau:
+
+1. `BUZZER_PIN` khi đó là **GPIO 48** — trùng thẳng chân Echo của cảm biến mới. Đã đổi buzzer sang GPIO 11.
+2. `SENSOR_ESPNOW_SLOT[]` bị gán **lệch thứ tự** so với `SENSOR_PINS[]`, khiến dữ liệu hiện sai nhãn cảm biến trên dashboard — lỗi này **không gây lỗi build** nên rất khó phát hiện nếu không đọc kỹ.
+3. Nguyên nhân gốc: log serial cho thấy cảm biến đó **luôn `Pulse: 0 us`** (100% timeout, ISR chưa từng chạy), trong khi các cảm biến khác vẫn nhận Echo bình thường. `esptool flash_id` xác nhận chip là bản **Embedded PSRAM 8MB** — GPIO 47/48 bị chip dùng nội bộ làm clock vi sai cho PSRAM, **không hoạt động được như GPIO thường** bất kể firmware cấu hình gì.
+
+Đã chuyển cảm biến REAR sang GPIO 3/4, và bổ sung bảng `RESERVED_PINS[]` + cảnh báo lúc boot trong `sensorTask` để loại lỗi này được phát hiện ngay từ log khởi động thay vì phải lặp lại toàn bộ quy trình chẩn đoán. Nhật ký đầy đủ: [`docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md`](../docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md).
+
+### 9.11 Phát hiện `buzzerTask` chưa bao giờ chạy
+
+Khi rà soát lại toàn bộ project để đối chiếu tài liệu với code, phát hiện `buzzerTask()` có **logic đầy đủ** và biến handle đã khai báo, nhưng `setup()` **chỉ gọi `xTaskCreatePinnedToCore()` cho 3 task** — thiếu hẳn lời gọi cho `buzzerTask`. Task chưa từng được đưa vào scheduler, nên còi vật lý **chưa bao giờ thực sự kêu** kể từ khi tính năng được viết (mục 9.7), kể cả trước khi đổi chân GPIO.
+
+Trình biên dịch không bắt được vì hàm vẫn được "dùng" gián tiếp qua khai báo handle nên không kích hoạt `-Wunused-function`, và mọi tài liệu đều mô tả tính năng như đang hoạt động. Bản báo cáo này (mục 10 phiên bản trước) từng ghi nghi vấn **"cần xác minh `buzzerTask` được khởi tạo hay chưa"** — nghi ngờ đúng nhưng chưa được kiểm chứng cho tới lần rà soát này. Đã bổ sung lời gọi tạo task (core 0, priority 1, stack 2048).
+
 ## 10. Hạn chế & việc cần làm thêm
 
-- ~~**Mở rộng đủ 6 cảm biến**~~ — **đã hoàn thành**: cả 6/6 cảm biến (S1..S6) đã được lắp phần cứng và khai báo trong `SENSOR_PINS[]`/`SENSOR_ESPNOW_SLOT[]`. Lưu ý khi đổi chân: **không dùng GPIO 47/48** (bị PSRAM chiếm dụng trên chip Embedded PSRAM 8MB) — xem [`docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md`](../docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md).
-- **Xác minh `buzzerTask` được khởi tạo trong bản build hiện hành**: khi review [`firmware/sensor-node/src/main.cpp`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp), hàm [`buzzerTask()`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp#L197-L257) (dòng 197-257) và handle [`s_buzzerTaskHandle`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp#L33) (dòng 33) được định nghĩa đầy đủ, nhưng **không quan sát thấy lệnh `xTaskCreatePinnedToCore(buzzerTask, ...)` trong [`setup()`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp#L317-L355)** (chỉ có `SensorTask`, `AppTask`, `NetworkTask` được tạo). Cần xác minh lại trên nhánh/bản build đã dùng để test buzzer thực tế (mục 9.7) — có thể lệnh tạo task nằm ở một bản chỉnh sửa chưa được đồng bộ vào file đang xét.
-- **Working tree hiện có thay đổi ảnh trong `report/` chưa commit** (đã xoá `demo.png`, thêm 5 ảnh mới) — nên commit sớm để tránh mất dữ liệu.
+**Đã hoàn thành** (giữ lại để đối chiếu với các bản báo cáo trước):
+
+- ~~Mở rộng đủ 6 cảm biến~~ — cả 6/6 cảm biến (S1..S6) đã lắp phần cứng và khai báo trong `SENSOR_PINS[]`/`SENSOR_ESPNOW_SLOT[]` (mục 9.10).
+- ~~Xác minh `buzzerTask` được khởi tạo~~ — đã xác minh: **không** được khởi tạo, và đã sửa (mục 9.11).
+
+**Còn tồn đọng:**
+
+- **Chưa kiểm chứng tầm hoạt động ESP-NOW trong điều kiện lắp thật trên xe**: khung/động cơ kim loại có thể che chắn sóng đáng kể. Khoảng cách giữa 2 board trên cùng một xe chỉ vài mét nên tầm xa không phải giới hạn, nhưng **nhiễu/che khuất** thì cần đo thực tế sau khi lắp cố định.
+- **ESP-NOW đang chạy không mã hoá** (`peerInfo.encrypt = false`): dữ liệu khoảng cách truyền dạng plaintext. Chấp nhận được ở phạm vi cục bộ trong xe, nhưng nên bật CCMP (AES-128, `lmk`) nếu mở rộng phạm vi hoặc thêm dữ liệu nhạy cảm.
+- **Chưa có cơ chế gửi lệnh ngược từ màn hình về `sensor-node`**: nút "Mute Alarm" trên dashboard hiện chỉ tắt cảnh báo **hình ảnh** trên màn hình, không tắt được còi vật lý — muốn làm được cần thêm kênh ESP-NOW 2 chiều (`esp_now_add_peer` ngược lại + xử lý lệnh phía `sensor-node`).
+- **Cảnh báo cho người đi đường bên ngoài xe** (còi/đèn ngoài xe, xem `architecture.png`) chưa được triển khai — hiện chỉ có cảnh báo trong cabin (còi buzzer + màn hình).
 - Tên nhánh `refactor/arduino` không phản ánh đúng bản chất thay đổi (code là ESP-IDF thuần) — cân nhắc đổi tên nhánh, ví dụ `refactor/platformio-layout`.
-- Cảnh báo cho người đi đường bên ngoài xe (còi/đèn ngoài xe, xem `architecture.png`) chưa được triển khai — hiện chỉ có cảnh báo trong cabin (còi buzzer + màn hình).
 
 ## 11. Ảnh minh hoạ & đề xuất bổ sung
 
@@ -249,4 +311,4 @@ Hiện SSID Wi-Fi đang kết nối, và tab SYSTEM đầy đủ thông tin key 
 
 1. Ảnh toàn cảnh bàn thử nghiệm với cả 2 board (`sensor-node` + `waveshare-screen`) hoạt động đồng thời, thấy rõ dây nối cảm biến.
 2. Sơ đồ đấu dây GPIO thực tế của `sensor-node` (breadboard/schematic tay hoặc Fritzing) — hiện chỉ có sơ đồ pinout board trần, chưa có sơ đồ đấu nối cảm biến cụ thể.
-3. Ảnh chụp giao diện web CoreIoT (bảng attributes/telemetry của thiết bị) để đối chiếu trực tiếp với ảnh màn hình LCD, minh hoạ luồng dữ liệu đầu-cuối.
+3. Ảnh chụp log serial 2 board đặt cạnh nhau (`[ESPNOW] Send OK` phía `sensor-node` và log nhận phía `waveshare-screen`) để minh hoạ luồng dữ liệu đầu-cuối của liên kết ESP-NOW — thay cho ảnh giao diện web CoreIoT vốn không còn nằm trên đường dữ liệu.
