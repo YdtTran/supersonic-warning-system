@@ -320,6 +320,7 @@ Lý do thay thế: ESP-NOW và Wi-Fi STA dùng chung radio, nên không thể v�
     \item \textbf{Kiểm chứng tầm hoạt động ESP-NOW khi lắp cố định trên xe}: khoảng cách giữa hai board chỉ vài mét nên tầm xa không phải giới hạn, nhưng khung và động cơ kim loại có thể gây che chắn/nhiễu đáng kể — cần đo thực tế sau khi lắp đặt hoàn chỉnh.
     \item \textbf{Bật mã hoá cho liên kết ESP-NOW}: hiện đang truyền không mã hoá (\code{encrypt = false}). Chấp nhận được ở phạm vi cục bộ trong xe, nhưng nên bật CCMP (AES-128) nếu mở rộng phạm vi hoặc truyền thêm dữ liệu nhạy cảm.
     \item \textbf{Kênh điều khiển ngược từ màn hình về node cảm biến}: nút ``Mute Alarm'' hiện chỉ tắt cảnh báo hình ảnh trên màn hình, chưa tắt được còi vật lý — cần bổ sung liên kết ESP-NOW hai chiều.
+    \item \textbf{Dọn hai dòng trạng thái tồn dư của kiến trúc MQTT trên giao diện}: dòng \code{BUZZER} và \code{RELAY} vốn hiển thị kết quả do Rule-Chain tính; sau khi bỏ đường đám mây, chúng không còn nguồn dữ liệu nên đứng yên vĩnh viễn. Cần xoá khỏi giao diện, hoặc bổ sung các trạng thái này vào bản tin ESP-NOW để hiển thị đúng.
     \item Bổ sung cảnh báo cho người đi đường phía ngoài xe (còi/đèn ngoài xe).
 \end{itemize}
 

@@ -63,6 +63,15 @@ ESP-NOW receive logic is not a separate component — it lives directly in `src/
 
 `coreiot_client`'s callback-based JSON parsing (accepting keys either at the top level or nested under a `values` object) and `ui_dashboard_set_relay_state()`/`ui_dashboard_set_buzzer_state()` calls still exist in the source but are unreferenced from `src/main.c`. Kept for a possible future MQTT restore — don't assume this path is live.
 
+**Two sidebar rows are frozen leftovers of that MQTT path — don't read them as live state:**
+
+- `BUZZER: --` is only written by `ui_dashboard_set_buzzer_state()`, which nothing calls on this branch. The physical buzzer runs on `sensor-node` (`BUZZER_PIN` in its `Config.h`) and ESP-NOW is one-way here, so this screen has no way to learn whether the buzzer is sounding. The row therefore never changes from `--`.
+- `RELAY: -- | N/A (ESP-NOW mode)` is set once in `app_main()` and never updated; `relay`/`warning_status` were Rule-Chain outputs that no longer exist.
+
+There is **no buzzer wired to this board** — a physical alarm here was considered and rejected, so `ui_dashboard.c` requires no GPIO access and its CMakeLists deliberately omits `esp_driver_gpio`. Adding a `driver/gpio.h` include without also adding that to `REQUIRES` breaks the build (this has happened once already). The "Mute Alarm" button only silences the on-screen DANGER blink.
+
+Fixing the two frozen rows means either deleting them from `build_right_sidebar()` (keeping the setter functions for an MQTT restore) or extending the ESP-NOW payload to carry that state — see `report/README.md` §10.
+
 ## Editing components
 
 When changing a component's public API, update both the header in `components/<name>/include/` and any callers in `src/main.c` — there's no build-time interface check across the PlatformIO/ESP-IDF boundary beyond normal compilation. `managed_components/` is PlatformIO/ESP-IDF's dependency cache (LVGL, esp_lvgl_adapter, GT911 touch driver, cJSON, esp-mqtt, etc., resolved via `src/idf_component.yml`) — treat it as vendored, not project code.
