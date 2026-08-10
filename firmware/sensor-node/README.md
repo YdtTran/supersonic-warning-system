@@ -1,16 +1,23 @@
-# Sensor Node Module - ESP32-S3 JSN-SR04T Vehicle Detection (S1 / S3 / S5)
+# Sensor Node Module - ESP32-S3 JSN-SR04T Vehicle Detection (S1..S6)
 
-Mô-đun vi điều khiển **ESP32-S3** (board `yolo_uno`, PlatformIO + Arduino framework) đọc 3 cảm biến siêu âm chống nước **JSN-SR04T V3** (Mode 0 mặc định, Trig/Echo qua GPIO — không qua UART), lọc nhiễu bằng thuật toán cụm + EMA, và gửi khoảng cách đã lọc trực tiếp tới `waveshare-screen` qua **ESP-NOW** (đường truyền cục bộ, không qua Wi-Fi AP/MQTT/cloud — xem [`docs/architecture/ESPNOW_NETWORK.md`](../../docs/architecture/ESPNOW_NETWORK.md)).
+Mô-đun vi điều khiển **ESP32-S3** (board `yolo_uno`, PlatformIO + Arduino framework) đọc **6 cảm biến** siêu âm chống nước **JSN-SR04T V3** (Mode 0 mặc định, Trig/Echo qua GPIO — không qua UART), lọc nhiễu bằng thuật toán cụm + EMA, và gửi khoảng cách đã lọc trực tiếp tới `waveshare-screen` qua **ESP-NOW** (đường truyền cục bộ, không qua Wi-Fi AP/MQTT/cloud — xem [`docs/architecture/ESPNOW_NETWORK.md`](../../docs/architecture/ESPNOW_NETWORK.md)).
 
 > Nhánh này **tạm ngắt hẳn** đường CoreIoT/MQTT để tránh xung đột Wi-Fi channel với ESP-NOW. `CoreiotClient.h`/`CoreiotConfig.h` vẫn còn trong cây mã nguồn nhưng **không được include/dùng** — giữ lại để khôi phục sau này nếu cần publish MQTT song song.
 
-Theo sơ đồ bố trí 6 cảm biến của hệ thống (xem [firmware/waveshare-screen/README.md](../waveshare-screen/README.md)), 3 cảm biến trên board này là:
+Theo sơ đồ bố trí 6 cảm biến của hệ thống (xem [firmware/waveshare-screen/README.md](../waveshare-screen/README.md)), board này đã lắp **đủ 6/6 cảm biến**:
 
-| Index cục bộ | ID hệ thống | Vị trí | Slot ESP-NOW (`SENSOR_ESPNOW_SLOT`) |
-| :--- | :--- | :--- | :--- |
-| `SENSOR_PINS[0]` | **S1** | Front (chính giữa, trước) | `ESPNOW_SLOT_FRONT` (0) |
-| `SENSOR_PINS[1]` | **S3** | Left-Front (hông trái, nửa trước) | `ESPNOW_SLOT_LEFT_FRONT` (2) |
-| `SENSOR_PINS[2]` | **S5** | Right-Front (hông phải, nửa trước) | `ESPNOW_SLOT_RIGHT_FRONT` (4) |
+| Index cục bộ | ID hệ thống | Vị trí | Trig/Echo | Slot ESP-NOW (`SENSOR_ESPNOW_SLOT`) |
+| :--- | :--- | :--- | :--- | :--- |
+| `SENSOR_PINS[0]` | **S1** | Front (chính giữa, trước) | GPIO 5 / 6 | `ESPNOW_SLOT_FRONT` (0) |
+| `SENSOR_PINS[1]` | **S3** | Left-Front (hông trái, nửa trước) | GPIO 7 / 8 | `ESPNOW_SLOT_LEFT_FRONT` (2) |
+| `SENSOR_PINS[2]` | **S5** | Right-Front (hông phải, nửa trước) | GPIO 9 / 10 | `ESPNOW_SLOT_RIGHT_FRONT` (4) |
+| `SENSOR_PINS[3]` | **S4** | Left-Rear (hông trái, nửa sau) | GPIO 17 / 18 | `ESPNOW_SLOT_LEFT_REAR` (3) |
+| `SENSOR_PINS[4]` | **S6** | Right-Rear (hông phải, nửa sau) | GPIO 21 / 38 | `ESPNOW_SLOT_RIGHT_REAR` (5) |
+| `SENSOR_PINS[5]` | **S2** | Rear (chính giữa, sau) | GPIO 3 / 4 | `ESPNOW_SLOT_REAR` (1) |
+
+> ⚠️ **Thứ tự vật lý trong `SENSOR_PINS[]` KHÔNG trùng thứ tự slot ESP-NOW** — luôn cập nhật `SENSOR_ESPNOW_SLOT[]` (`EspNowConfig.h`) đồng thời khi sửa `SENSOR_PINS[]` (`Config.h`). Lệch nhau **không gây lỗi build**, chỉ làm sai nhãn cảm biến trên dashboard.
+>
+> ⚠️ **Không dùng GPIO 47/48** trên board này (ESP32-S3 Embedded PSRAM 8MB chiếm 2 chân đó làm clock vi sai cho PSRAM → Echo luôn timeout dù cảm biến vẫn nháy đèn). Cũng tránh GPIO 26-32 (SPI0 flash/PSRAM) và 19/20 (USB D-/D+). `sensorTask` tự in cảnh báo lúc boot nếu cấu hình trúng các chân này — chi tiết: [`docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md`](../../docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md).
 
 ---
 
@@ -44,7 +51,7 @@ firmware/sensor-node/
 - **Không kết nối Wi-Fi AP/MQTT** — `WiFi.mode(WIFI_STA)` chỉ để lấy cơ chế Wi-Fi radio cho ESP-NOW, không có `WiFi.begin()`/broker nào cả trên nhánh này.
 - **Channel**: cố định `ESPNOW_CHANNEL = 1` trong `include/EspNowConfig.h` — phải khớp với `waveshare-screen`.
 - **MAC đích**: `ESPNOW_PEER_MAC` trong `include/EspNowConfig.h` — MAC của board `waveshare-screen` (receiver). Cập nhật lại nếu board đó bị reflash/đổi. Nguồn thông tin dùng chung đầy đủ (bảng MAC 2 board, cách đồng bộ lại): [`docs/architecture/ESPNOW_NETWORK.md`](../../docs/architecture/ESPNOW_NETWORK.md).
-- **Định dạng dữ liệu**: struct nhị phân packed `espnow_sensor_msg_t` (6 slot `distance_cm`/`valid`, không phải JSON) — chỉ 3 slot có phần cứng thật (`front`, `left_front`, `right_front`, ánh xạ qua `SENSOR_ESPNOW_SLOT[]`) được set `valid=1`; slot nào cảm biến mất tín hiệu hoặc chưa lắp phần cứng giữ `valid=0` thay vì gửi `0` giả.
+- **Định dạng dữ liệu**: struct nhị phân packed `espnow_sensor_msg_t` (6 slot `distance_cm`/`valid`, không phải JSON, 30 bytes/gói) — cả 6 slot đều có phần cứng thật và được set `valid=1` khi đo được; slot nào cảm biến đang mất tín hiệu giữ `valid=0` thay vì gửi `0` giả.
 - **Tần suất gửi**: mỗi `ESPNOW_SEND_INTERVAL_MS` = **500ms** (2Hz) — tách biệt với tốc độ đo/lọc cục bộ (`MEASURE_INTERVAL_MS` trong `Config.h` = 100ms) để bộ lọc cụm/EMA vẫn phản ứng nhanh cho cảnh báo va chạm, chỉ giảm tần suất gửi lên mạng.
 - `waveshare-screen` nhận và tự đánh giá hazard cục bộ (không còn Rule-Chain CoreIoT trên nhánh này) — xem `firmware/waveshare-screen/src/main.c` và `ui_dashboard.c`.
 
@@ -55,13 +62,13 @@ firmware/sensor-node/
 | `sensorTask` | 1 | 2 | Đo + lọc từng cảm biến mỗi `MEASURE_INTERVAL_MS`, ghi vào `SharedState` |
 | `appTask` | 1 | 1 | Ví dụ dùng `SharedState` (bật LED khi vật ở gần) |
 | `networkTask` | 0 | 1 | Đóng gói `SharedState` thành `espnow_sensor_msg_t`, gửi tới `waveshare-screen` mỗi `ESPNOW_SEND_INTERVAL_MS` |
-| `buzzerTask` | — | — | Đọc khoảng cách gần nhất từ `SharedState`, điều khiển buzzer (GPIO `BUZZER_PIN`) cục bộ |
+| `buzzerTask` | 0 | 1 | Đọc khoảng cách gần nhất từ `SharedState`, điều khiển buzzer (GPIO `BUZZER_PIN` = 11) cục bộ |
 
 `networkTask` chạy trên core 0 (tách khỏi core 1) để việc gửi ESP-NOW không ảnh hưởng timing đo cảm biến (Echo timeout tính bằng micro-giây).
 
 ## Buzzer cảnh báo (cục bộ, không qua mạng)
 
-`buzzerTask` (`src/main.cpp`) đọc khoảng cách gần nhất trong `SharedState` và điều khiển trực tiếp buzzer vật lý gắn ở `BUZZER_PIN` (GPIO 48, xem `include/Config.h`) — **không** round-trip qua mạng/cloud, để giữ độ trễ phản hồi thấp nhất cho cảnh báo va chạm:
+`buzzerTask` (`src/main.cpp`) đọc khoảng cách gần nhất trong `SharedState` và điều khiển trực tiếp buzzer vật lý gắn ở `BUZZER_PIN` (**GPIO 11**, xem `include/Config.h`) — **không** round-trip qua mạng/cloud, để giữ độ trễ phản hồi thấp nhất cho cảnh báo va chạm:
 
 | Ngưỡng | Khoảng cách | Nhịp beep |
 | :--- | :--- | :--- |

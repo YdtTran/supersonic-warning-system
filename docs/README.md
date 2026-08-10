@@ -21,7 +21,7 @@ Phần lớn là tài liệu **audit/nghiên cứu trước khi triển khai** m
 | File | Nội dung |
 | --- | --- |
 | [`ESPNOW_NETWORK.md`](architecture/ESPNOW_NETWORK.md) | Nguồn thông tin dùng chung ESP-NOW (đang dùng): MAC/channel 2 board, struct `espnow_sensor_msg_t`, cách đồng bộ khi đổi board |
-| [`DATA_SCHEMA.md`](architecture/DATA_SCHEMA.md) | Schema chính thức payload ESP-NOW (`sensor-node` → `waveshare-screen`) và struct nội bộ `sensor_model`, kèm khoảng trống đã biết (chỉ 3/6 slot cảm biến có dữ liệu sống); có ghi chú đường MQTT/CoreIoT cũ không còn hoạt động |
+| [`DATA_SCHEMA.md`](architecture/DATA_SCHEMA.md) | Schema chính thức payload ESP-NOW (`sensor-node` → `waveshare-screen`) và struct nội bộ `sensor_model`, kèm bảng ánh xạ slot ↔ chân GPIO của cả 6 cảm biến và ngữ nghĩa `valid=0`; có ghi chú đường MQTT/CoreIoT cũ không còn hoạt động |
 | [`waveshare_examples_review.md`](architecture/waveshare_examples_review.md) | Kiểm kê & review các ví dụ mẫu ESP-IDF chính hãng Waveshare (`reference/lcd-example`) — I2C test, driver LCD/touch tham khảo |
 | [`lvgl_demos_architecture_review.md`](architecture/lvgl_demos_architecture_review.md) | Audit kiến trúc `lv_demos` của LVGL, đối chiếu với nhu cầu UI cảnh báo va chạm |
 | [`ui_development_pipeline.md`](architecture/ui_development_pipeline.md) | SOP xây dựng UI cảnh báo real-time bằng LVGL v9 (design tokens, quy trình phát triển) |

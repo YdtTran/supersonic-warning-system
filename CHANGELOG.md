@@ -15,19 +15,30 @@ Tất cả thay đổi đáng chú ý của dự án `supersonic-sensor-ACLAB` �
 ### Changed
 
 - `sensor-node` và `waveshare-screen` chuyển sang giao tiếp trực tiếp qua **ESP-NOW** (channel cố định, không qua Wi-Fi AP/MQTT/CoreIoT) thay cho publish/subscribe MQTT qua CoreIoT Rule-Chain — xem [`docs/architecture/ESPNOW_NETWORK.md`](docs/architecture/ESPNOW_NETWORK.md). `CoreiotClient`/`coreiot_client`/Rule-Chain vẫn còn trong cây mã nguồn, không bị xoá, để khôi phục sau này.
-- `sensor-node` lắp thêm cảm biến thứ 3 (S1, Front) — `SENSOR_COUNT` 2→3, ánh xạ ESP-NOW qua `SENSOR_ESPNOW_SLOT[]` mới trong `EspNowConfig.h`.
+- `sensor-node` lắp **đủ 6/6 cảm biến** (`SENSOR_COUNT` 2→3→6) — ánh xạ ESP-NOW qua `SENSOR_ESPNOW_SLOT[]` trong `EspNowConfig.h`.
+- `BUZZER_PIN` chuyển GPIO48 → **GPIO11** (GPIO48 trùng echo pin của cảm biến REAR mới thêm).
+- Cảm biến REAR chuyển GPIO47/48 → **GPIO3/4**: chip ESP32-S3 bản Embedded PSRAM 8MB chiếm GPIO47/48 làm clock vi sai cho PSRAM nên Echo luôn timeout.
 - `waveshare-screen` tự đánh giá hazard cục bộ ("OVERALL" banner qua `evaluate_hazard()`), không còn phụ thuộc `vehicle_detected`/`warning_status`/`relay` do Rule-Chain CoreIoT tính.
 
 ### Added
 
 - `sensor_model_clear()` / `ui_dashboard_clear_sensor()`: đánh dấu 1 cảm biến "no data" khi ESP-NOW báo `valid=0` cho slot đó (arc màu xám trung tính, sidebar "-- cm"), thay vì giữ lại khoảng cách cũ.
 - `ui_dashboard_set_espnow_status()`: badge header "ESP-NOW: LINKED"/"NO LINK", cập nhật bởi watchdog `esp_timer` 1s (ngưỡng mất liên kết 1.5s).
+- `RESERVED_PINS[]` + `warnIfReservedPin()` trên `sensor-node`: cảnh báo ngay lúc boot nếu chân Trig/Echo/Buzzer trùng GPIO bị chiếm dụng nội bộ (47/48 PSRAM, 26-32 SPI0, 19/20 USB).
+- Tài liệu kỹ thuật ESP-NOW (phần cứng, tầm hoạt động, giới hạn payload/buffer, độ tin cậy, bảo mật) trong [`docs/architecture/ESPNOW_NETWORK.md`](docs/architecture/ESPNOW_NETWORK.md).
+
+### Fixed
+
+- **`buzzerTask` chưa bao giờ chạy**: hàm được viết đầy đủ nhưng thiếu lời gọi `xTaskCreatePinnedToCore()` trong `setup()` — còi cảnh báo không kêu dù code trông hoàn chỉnh. Đã bổ sung (core 0, priority 1).
+- `SENSOR_ESPNOW_SLOT[]` lệch thứ tự so với `SENSOR_PINS[]` khiến dữ liệu cảm biến hiện sai nhãn trên dashboard (không gây lỗi build).
+- Ký tự `x` lạc ở đầu `components/sensor_model/sensor_model.c` làm hỏng build `waveshare-screen`.
+- Nút "Mute Alarm" giờ đổi nhãn/màu theo trạng thái và banner hiện `OVERALL: DANGER (MUTED)` — trước đây mute không có dấu hiệu nhận biết nào trên UI.
 
 ## [2026-08-04] - Refactor `waveshare-screen` sang PlatformIO/ESP-IDF thuần, buzzer, báo cáo kỹ thuật
 
 ### Added
 
-- Buzzer vật lý cục bộ trên `sensor-node` (GPIO48): kêu 3s/lần khi WARNING, 1s/lần khi DANGER, không qua round-trip cloud.
+- Buzzer vật lý cục bộ trên `sensor-node` (GPIO48 — sau này đổi sang GPIO11, xem mục Unreleased): kêu 3s/lần khi WARNING, 1s/lần khi DANGER, không qua round-trip cloud.
 - Rule-Chain CoreIoT: thêm field `buzzer` (mirror `relay`) để `waveshare-screen` hiển thị đồng bộ trạng thái còi.
 - `ui_dashboard`: hiện SSID Wi-Fi đang kết nối; tab SYSTEM đầy đủ (device/network/cloud key đã che, firmware/IDF version, flash/heap/uptime).
 - `prototypes/pulse-read-prototype`: đọc trực tiếp xung Trig/Echo qua GPIO (JSN-SR04T Mode 3), thay vì giải mã khung UART.

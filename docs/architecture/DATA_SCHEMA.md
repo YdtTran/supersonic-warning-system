@@ -9,7 +9,7 @@
 1. [`sensor-node` → `waveshare-screen` (ESP-NOW telemetry)](#1-sensor-node--waveshare-screen-esp-now-telemetry)
 2. [Hazard đánh giá cục bộ trên `waveshare-screen`](#2-hazard-đánh-giá-cục-bộ-trên-waveshare-screen)
 3. [`sensor_model` — struct nội bộ trên `waveshare-screen`](#3-sensor_model--struct-nội-bộ-trên-waveshare-screen)
-4. [Khoảng trống đã biết: chỉ 3/6 slot `sensor_model` có dữ liệu sống](#4-khoảng-trống-đã-biết-chỉ-36-slot-sensor_model-có-dữ-liệu-sống)
+4. [Trạng thái "no data" (`valid=0`) — khi nào xảy ra](#4-trạng-thái-no-data-valid0--khi-nào-xảy-ra)
 5. [Đồng bộ ngưỡng cảnh báo](#5-đồng-bộ-ngưỡng-cảnh-báo)
 
 ---
@@ -23,20 +23,24 @@
 ```c
 typedef struct __attribute__((packed)) {
     float   distance_cm[6];   // idx: 0=front,1=rear,2=left_front,3=left_rear,4=right_front,5=right_rear
-    uint8_t valid[6];         // 1 = giá trị hợp lệ, 0 = cảm biến lỗi/chưa lắp phần cứng ("null")
+    uint8_t valid[6];         // 1 = giá trị hợp lệ, 0 = cảm biến lỗi/mất tín hiệu ("null")
 } espnow_sensor_msg_t;
 ```
 
-| Slot (idx) | Field | Ghi chú |
-| --- | --- | --- |
-| 0 | `front` | S1 — có phần cứng thật (`SENSOR_PINS[0]` trên sensor-node). |
-| 1 | `rear` | S2 — chưa lắp phần cứng, luôn `valid=0`. |
-| 2 | `left_front` | S3 — có phần cứng thật (`SENSOR_PINS[1]`). |
-| 3 | `left_rear` | S4 — chưa lắp phần cứng, luôn `valid=0`. |
-| 4 | `right_front` | S5 — có phần cứng thật (`SENSOR_PINS[2]`). |
-| 5 | `right_rear` | S6 — chưa lắp phần cứng, luôn `valid=0`. |
+| Slot (idx) | Field | `SENSOR_PINS[]` (Trig/Echo) | Ghi chú |
+| --- | --- | --- | --- |
+| 0 | `front` | `[0]` = GPIO 5 / 6 | S1 — có phần cứng thật. |
+| 1 | `rear` | `[5]` = GPIO 3 / 4 | S2 — có phần cứng thật (**không dùng GPIO 47/48**, xem ghi chú bên dưới). |
+| 2 | `left_front` | `[1]` = GPIO 7 / 8 | S3 — có phần cứng thật. |
+| 3 | `left_rear` | `[3]` = GPIO 17 / 18 | S4 — có phần cứng thật. |
+| 4 | `right_front` | `[2]` = GPIO 9 / 10 | S5 — có phần cứng thật. |
+| 5 | `right_rear` | `[4]` = GPIO 21 / 38 | S6 — có phần cứng thật. |
 
-**Khoảng trống hiện tại**: kiến trúc phần mềm hỗ trợ tối đa 6 cảm biến (`SENSOR_PINS[]`, `sensor_id_t` phía `waveshare-screen`), nhưng **chỉ 3/6 cảm biến được lắp phần cứng thật** (S1, S3, S5). `sensor-node` set `valid=1` cho 3 slot này qua mảng ánh xạ `SENSOR_ESPNOW_SLOT[SENSOR_COUNT]` (`EspNowConfig.h`); 3 slot còn lại luôn `valid=0`. Mở rộng thêm cảm biến: [`docs/API_GUIDE.md` mục 3.2](../API_GUIDE.md#32-thêmbớt-cảm-biến-trên-sensor-node).
+**Đủ 6/6 cảm biến đã được lắp phần cứng thật.** `sensor-node` ánh xạ index vật lý trong `SENSOR_PINS[]` sang slot ESP-NOW qua mảng `SENSOR_ESPNOW_SLOT[SENSOR_COUNT]` (`EspNowConfig.h`) — lưu ý **thứ tự vật lý khác thứ tự slot** (phần tử `SENSOR_PINS[5]` là REAR → slot 1), nên hai mảng phải luôn được cập nhật đồng thời khi thêm/bớt cảm biến; lệch nhau không gây lỗi build mà chỉ làm sai nhãn cảm biến trên dashboard. `valid[i]=0` vẫn xảy ra ở runtime khi cảm biến đó mất tín hiệu tạm thời (`RESET_AFTER_INVALID` trong `Config.h`).
+
+> **Không dùng GPIO 47/48 cho cảm biến trên board này**: chip ESP32-S3 bản Embedded PSRAM 8MB chiếm 2 chân đó làm clock vi sai cho PSRAM, Echo sẽ luôn timeout dù cảm biến vẫn hoạt động vật lý. Chi tiết sự cố & cách chẩn đoán: [`docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md`](../logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md).
+
+Mở rộng thêm cảm biến: [`docs/API_GUIDE.md` mục 3.2](../API_GUIDE.md#32-thêmbớt-cảm-biến-trên-sensor-node).
 
 ## 2. Hazard đánh giá cục bộ trên `waveshare-screen`
 
@@ -56,11 +60,11 @@ Không còn Rule-Chain CoreIoT tính `vehicle_detected`/`warning_status`/`relay`
 | Giá trị enum | Index | Vị trí lắp (compass) | Góc lắp `offset_deg` | Slot ESP-NOW tương ứng (mục 1) |
 | --- | --- | --- | --- | --- |
 | `SENSOR_ID_FRONT` | 0 | S1 — trước | 0° | `front` (0) — **có dữ liệu sống** |
-| `SENSOR_ID_REAR` | 1 | S2 — sau | 180° | `rear` (1) — *(chưa lắp — xem mục 4)* |
+| `SENSOR_ID_REAR` | 1 | S2 — sau | 180° | `rear` (1) — **có dữ liệu sống** |
 | `SENSOR_ID_LEFT_FRONT` | 2 | S3 — trước-trái | -90° (trái) | `left_front` (2) — **có dữ liệu sống** |
-| `SENSOR_ID_LEFT_REAR` | 3 | S4 — sau-trái | -90° (trái) | `left_rear` (3) — *(chưa lắp)* |
+| `SENSOR_ID_LEFT_REAR` | 3 | S4 — sau-trái | -90° (trái) | `left_rear` (3) — **có dữ liệu sống** |
 | `SENSOR_ID_RIGHT_FRONT` | 4 | S5 — trước-phải | +90° (phải) | `right_front` (4) — **có dữ liệu sống** |
-| `SENSOR_ID_RIGHT_REAR` | 5 | S6 — sau-phải | +90° (phải) | `right_rear` (5) — *(chưa lắp)* |
+| `SENSOR_ID_RIGHT_REAR` | 5 | S6 — sau-phải | +90° (phải) | `right_rear` (5) — **có dữ liệu sống** |
 
 Mỗi phần tử (`sensor_reading_t`) gồm: `distance_cm` (uint16_t), `offset_deg` (góc lắp cố định, dùng để vẽ vị trí trên canvas xe 2D), `is_stale` (cờ đánh dấu dữ liệu cũ/chưa cập nhật). Toàn bộ struct 6 phần tử bảo vệ bằng **1 mutex FreeRTOS dùng chung** cho mọi task đọc/ghi (network callback ghi, UI task đọc).
 
@@ -74,15 +78,17 @@ Mỗi phần tử (`sensor_reading_t`) gồm: `distance_cm` (uint16_t), `offset_
 
 Ngưỡng này **hardcode trong mã nguồn C** (`firmware/waveshare-screen/components/sensor_model/sensor_model.c`), không phải tham số cấu hình — khác và **độc lập** với ngưỡng WARNING/DANGER 50cm/20cm của buzzer trên `sensor-node` (xem mục 5 bên dưới).
 
-## 4. Khoảng trống đã biết: chỉ 3/6 slot `sensor_model` có dữ liệu sống
+## 4. Trạng thái "no data" (`valid=0`) — khi nào xảy ra
 
-Kiến trúc phần mềm hỗ trợ đầy đủ 6 cảm biến ở **cả 3 lớp** (mảng `SENSOR_PINS[]` phía `sensor-node`, 6 field `sensor_id_t` phía `sensor_model`, 6 cung `lv_arc` trên UI) — nhưng dữ liệu thật hiện chỉ chảy qua **3 slot**: `SENSOR_ID_FRONT`, `SENSOR_ID_LEFT_FRONT` và `SENSOR_ID_RIGHT_FRONT`, vì:
+Cả 6 cảm biến đều đã có phần cứng thật, nên ở trạng thái bình thường mọi slot đều `valid=1`. Tuy vậy `waveshare-screen` **vẫn phải xử lý được `valid=0`** cho bất kỳ slot nào, vì các trường hợp sau xảy ra ở runtime:
 
-1. Chỉ 3/6 cảm biến vật lý (S1, S3, S5) được lắp trên phần cứng thật.
-2. `sensor-node` chỉ set `valid=1` cho 3 slot ESP-NOW tương ứng qua `SENSOR_ESPNOW_SLOT[]` (mục 1).
-3. `waveshare-screen` gọi `ui_dashboard_clear_sensor()` cho các slot `valid=0` — không giữ lại giá trị cũ.
+1. **Mất tín hiệu tạm thời**: cảm biến đọc lỗi liên tiếp `RESET_AFTER_INVALID` lần (15, `Config.h`) → `sensor-node` gọi `sharedStateSet(i, 0, false)`, slot đó gửi `valid=0` cho tới khi đo lại được.
+2. **Chưa đủ mẫu để lọc**: sau khi reset bộ lọc, cụm/EMA cần tối thiểu `MIN_SAMPLES_TO_FILTER` mẫu mới cho ra giá trị ổn định.
+3. **Không có vật cản trong tầm**: khoảng cách vượt `MAX_DISTANCE_CM` (500cm) bị bộ lọc loại, tính là mẫu lỗi.
 
-Kết quả: 3 slot còn lại (`SENSOR_ID_REAR`, `SENSOR_ID_LEFT_REAR`, `SENSOR_ID_RIGHT_REAR`) **luôn ở trạng thái "no data"** (`is_stale=true`, arc màu xám trung tính, sidebar hiện "-- cm") trên `waveshare-screen` — không phải lỗi, mà là hệ quả trực tiếp của việc chưa lắp đủ phần cứng, và `evaluate_hazard()` chủ động bỏ qua các slot này. **Người đóng góp mới không nên giả định cả 6 cảm biến đều "sống"** khi đọc code UI hay debug dashboard — 3 cung còn lại trên canvas xe sẽ luôn hiển thị trạng thái "no data" cho tới khi có phần cứng bổ sung và cả 3 lớp trên được mở rộng đồng bộ (hướng dẫn thêm cảm biến: [`docs/API_GUIDE.md` mục 3.2](../API_GUIDE.md#32-thêmbớt-cảm-biến-trên-sensor-node)).
+Xử lý phía `waveshare-screen`: `ui_dashboard_clear_sensor()` được gọi cho slot `valid=0` — đặt `is_stale=true`, arc chuyển màu xám trung tính, sidebar hiện "-- cm", **không giữ lại giá trị cũ**. `evaluate_hazard()` chủ động bỏ qua các slot `is_stale` khi tính banner "OVERALL" — nếu không, `distance_cm=0` mặc định sẽ bị phân loại thành DANGER và ghim banner vĩnh viễn.
+
+Phân biệt quan trọng khi debug: "-- cm" **không đồng nghĩa với "an toàn/không có vật cản"** — nó nghĩa là *không có dữ liệu tin cậy*, nên arc dùng màu xám riêng (`COLOR_NODATA`) thay vì màu xanh SAFE.
 
 ## 5. Đồng bộ ngưỡng cảnh báo
 

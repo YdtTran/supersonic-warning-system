@@ -26,13 +26,13 @@
 
 Dự án xây dựng hệ thống nhúng phát hiện vật cản/xe cộ ở khoảng cách gần bằng **cảm biến siêu âm chống nước JSN-SR04T**, gắn trên vi điều khiển **ESP32-S3 (board Yolo:Uno)**. Dữ liệu khoảng cách được gửi lên nền tảng IoT **CoreIoT (ThingsBoard)** qua MQTT, xử lý ngưỡng cảnh báo bằng **Rule-Chain**, và định tuyến kết quả xuống **màn hình cảm ứng Waveshare ESP32-S3 Touch LCD 7"** để hiển thị trực quan (dashboard va chạm kiểu "no-zone" quanh xe) đồng thời điều khiển còi cảnh báo vật lý.
 
-Ý tưởng gốc (xem `architecture.png`) là hệ thống 6 cảm biến bao quanh toàn bộ xe (trước/sau/4 góc) kết hợp cảnh báo cho người đi đường. **Hệ thống hiện tại đã triển khai 2/6 cảm biến** (S3 – trước-trái, S5 – trước-phải) trên phần cứng thật và hoạt động ổn định; phần còn lại (4 cảm biến + cảnh báo ngoài xe) **đang chờ bổ sung phần cứng**, không phải là thu hẹp phạm vi dự án.
+Ý tưởng gốc (xem `architecture.png`) là hệ thống 6 cảm biến bao quanh toàn bộ xe (trước/sau/4 góc) kết hợp cảnh báo cho người đi đường. **Hệ thống hiện tại đã triển khai đủ 6/6 cảm biến** (S1 – trước, S2 – sau, S3/S4 – hông trái, S5/S6 – hông phải) trên phần cứng thật; phần cảnh báo cho người đi đường bên ngoài xe **vẫn đang chờ bổ sung phần cứng**, không phải là thu hẹp phạm vi dự án.
 
 ## 2. Kiến trúc tổng quan
 
 ```text
  ┌────────────────────────┐
- │   Cảm biến JSN-SR04T   │  x2 hiện tại (S3 trước-trái, S5 trước-phải), kiến trúc hỗ trợ tối đa 6
+ │   Cảm biến JSN-SR04T   │  x6 (S1 trước, S2 sau, S3/S4 hông trái, S5/S6 hông phải)
  └───────────┬────────────┘
              │ Echo / Trig GPIO
              ▼
@@ -62,7 +62,7 @@ Sơ đồ ý tưởng gốc (6 cảm biến bao quanh xe, đề xuất ban đầ
 | MCU | **Yolo:Uno** — board phát triển dựa trên **ESP32-S3-WROOM-1** (Dual-Core 240MHz, Wi-Fi/BLE, PSRAM Octal). Pinout đầy đủ bên dưới. |
 | Cảm biến khoảng cách | **JSN-SR04T V3** — cảm biến siêu âm chống nước, tách rời đầu dò và board mạch, chạy ở **Mode 0 (mặc định)**: MCU phát xung Trig, đọc trực tiếp độ rộng xung Echo qua GPIO (không qua UART, không cần chỉnh jumper). Dòng JSN-SR04T còn hỗ trợ các Mode khác (vd tự động đo và trả khoảng cách qua UART) chọn bằng điện trở `R27` trên board (xem ảnh minh hoạ bên dưới). |
 | Màn hình hiển thị | **Waveshare ESP32-S3 Touch LCD 7"** — panel RGB 800×480, cảm ứng dung kháng **GT911** (I2C, 400kHz Fast-mode), IO-expander **CH422G** (I2C, địa chỉ `0x24`/`0x38`) điều khiển backlight, reset cảm ứng, chip-select thẻ SD và MUX CAN. |
-| Cảnh báo cục bộ | Còi buzzer GPIO48 gắn trực tiếp trên `sensor-node` — phản hồi ngay lập tức không qua round-trip cloud. |
+| Cảnh báo cục bộ | Còi buzzer GPIO11 gắn trực tiếp trên `sensor-node` — phản hồi ngay lập tức không qua round-trip cloud. |
 
 ![Pinout Yolo:Uno (ESP32-S3)](./image.png)
 
@@ -89,15 +89,16 @@ Sơ đồ ý tưởng gốc (6 cảm biến bao quanh xe, đề xuất ban đầ
 
 ### 5.1 Kiến trúc tác vụ FreeRTOS
 
-[`firmware/sensor-node/src/main.cpp`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp) tạo 3 task FreeRTOS trong [`setup()`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp#L317-L355):
+[`firmware/sensor-node/src/main.cpp`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp) tạo 4 task FreeRTOS trong `setup()`:
 
 | Task | Stack | Priority | Core | Vai trò |
 |---|---|---|---|---|
 | `SensorTask` | 4096 | 2 | 1 | Trigger + đọc tuần tự từng cảm biến (tránh nhiễu âm học giữa các cảm biến), đưa qua bộ lọc, ghi kết quả vào `SharedState` (mutex). |
 | `AppTask` | 2048 | 1 | 1 | Ví dụ tiêu thụ dữ liệu đã lọc song song, độc lập chu kỳ đo (bật LED khi có vật gần). |
-| `NetworkTask` | 4096 | 1 | 0 | Kết nối Wi-Fi/MQTT tới CoreIoT, publish khoảng cách 2 cảm biến (S3/S5) mỗi `COREIOT_PUBLISH_INTERVAL_MS`, tách khỏi core 1 để không ảnh hưởng timing đo (ràng buộc bằng microsecond). |
+| `NetworkTask` | 4096 | 1 | 0 | Đóng gói `SharedState` thành `espnow_sensor_msg_t` và gửi ESP-NOW tới `waveshare-screen` mỗi `ESPNOW_SEND_INTERVAL_MS` (500ms), tách khỏi core 1 để không ảnh hưởng timing đo (ràng buộc bằng microsecond). |
+| `BuzzerTask` | 2048 | 1 | 0 | Đọc khoảng cách gần nhất trong `SharedState`, điều khiển còi vật lý GPIO11 theo ngưỡng WARNING/DANGER. |
 
-Ngoài ra [`buzzerTask()`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp#L197-L257) (dòng 197-257) đã được viết đầy đủ logic còi cảnh báo nhưng **cần xác minh có được khởi tạo bằng `xTaskCreatePinnedToCore` trong `setup()` hay chưa** — xem [mục 10](#10-hạn-chế--việc-cần-làm-thêm).
+**Lịch sử**: `buzzerTask()` từng được viết đầy đủ logic nhưng **thiếu lời gọi `xTaskCreatePinnedToCore` trong `setup()`**, nên còi cảnh báo chưa bao giờ thực sự kêu dù code trông hoàn chỉnh. Đã bổ sung — xem [`docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md`](../docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md).
 
 > API chi tiết + ví dụ code của `UltrasonicSensor`, `DistanceFilter`, `SharedState`, `CoreiotClient`: [`docs/API_GUIDE.md` mục 1](../docs/API_GUIDE.md#1-firmwaresensor-node-arduino--thư-viện-đo--lọc-cảm-biến).
 
@@ -218,7 +219,7 @@ Tăng `MAX_DISTANCE_CM` 450→500cm, `ECHO_TIMEOUT_US` 40ms, tắt bớt `Serial
 
 ### 9.7 Tính năng buzzer
 
-Rule-chain cloud emit thêm field `buzzer` đồng bộ với `relay`; `sensor-node` điều khiển buzzer vật lý qua GPIO48 cục bộ (không qua round-trip cloud, để phản hồi realtime) — 3s/lần khi WARNING, 1s/lần khi DANGER; `waveshare-screen` hiển thị thêm dòng `BUZZER: ON/OFF`.
+Rule-chain cloud emit thêm field `buzzer` đồng bộ với `relay`; `sensor-node` điều khiển buzzer vật lý qua GPIO11 cục bộ (không qua round-trip cloud, để phản hồi realtime) — 3s/lần khi WARNING, 1s/lần khi DANGER; `waveshare-screen` hiển thị thêm dòng `BUZZER: ON/OFF`.
 
 ### 9.8 Bổ sung UI dashboard (SSID + thông tin hệ thống)
 
@@ -226,7 +227,7 @@ Hiện SSID Wi-Fi đang kết nối, và tab SYSTEM đầy đủ thông tin key 
 
 ## 10. Hạn chế & việc cần làm thêm
 
-- **Mở rộng đủ 6 cảm biến**: hệ thống hiện chỉ lắp 2/6 cảm biến (S3, S5); kiến trúc phần mềm (`sensor_model` phía màn hình, mảng `SENSOR_PINS` phía sensor-node) đã hỗ trợ sẵn tối đa 6 cảm biến — chỉ cần bổ sung phần cứng và khai báo chân.
+- ~~**Mở rộng đủ 6 cảm biến**~~ — **đã hoàn thành**: cả 6/6 cảm biến (S1..S6) đã được lắp phần cứng và khai báo trong `SENSOR_PINS[]`/`SENSOR_ESPNOW_SLOT[]`. Lưu ý khi đổi chân: **không dùng GPIO 47/48** (bị PSRAM chiếm dụng trên chip Embedded PSRAM 8MB) — xem [`docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md`](../docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md).
 - **Xác minh `buzzerTask` được khởi tạo trong bản build hiện hành**: khi review [`firmware/sensor-node/src/main.cpp`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp), hàm [`buzzerTask()`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp#L197-L257) (dòng 197-257) và handle [`s_buzzerTaskHandle`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp#L33) (dòng 33) được định nghĩa đầy đủ, nhưng **không quan sát thấy lệnh `xTaskCreatePinnedToCore(buzzerTask, ...)` trong [`setup()`](https://github.com/YdtTran/supersonic-warning-system/blob/main/firmware/sensor-node/src/main.cpp#L317-L355)** (chỉ có `SensorTask`, `AppTask`, `NetworkTask` được tạo). Cần xác minh lại trên nhánh/bản build đã dùng để test buzzer thực tế (mục 9.7) — có thể lệnh tạo task nằm ở một bản chỉnh sửa chưa được đồng bộ vào file đang xét.
 - **Working tree hiện có thay đổi ảnh trong `report/` chưa commit** (đã xoá `demo.png`, thêm 5 ảnh mới) — nên commit sớm để tránh mất dữ liệu.
 - Tên nhánh `refactor/arduino` không phản ánh đúng bản chất thay đổi (code là ESP-IDF thuần) — cân nhắc đổi tên nhánh, ví dụ `refactor/platformio-layout`.

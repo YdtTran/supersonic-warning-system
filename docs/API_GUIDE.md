@@ -158,7 +158,7 @@ EspNowClient client;
 void networkTask(void *) {
     client.begin();
     for (;;) {
-        espnow_sensor_msg_t msg = {}; // valid[] mặc định 0 = "null" cho slot chưa lắp phần cứng
+        espnow_sensor_msg_t msg = {}; // valid[] mặc định 0 = "null" cho slot đang mất tín hiệu
         float distanceCm;
         if (sharedStateGet(/*sensorIndex=*/0, distanceCm)) {
             uint8_t slot = SENSOR_ESPNOW_SLOT[0];
@@ -192,7 +192,7 @@ Header: [`components/sensor_model/include/sensor_model.h`](../firmware/waveshare
 
 `sensor_id_t` gồm `SENSOR_ID_FRONT/REAR/LEFT_FRONT/LEFT_REAR/RIGHT_FRONT/RIGHT_REAR` (0–5, khớp thứ tự `S1..S6`).
 
-> Schema đầy đủ của struct này (bảng field, và lưu ý chỉ 3/6 slot có dữ liệu sống vì mới lắp 3 cảm biến phần cứng): [`docs/architecture/DATA_SCHEMA.md` mục 3](architecture/DATA_SCHEMA.md#3-sensor_model--struct-nội-bộ-trên-waveshare-screen).
+> Schema đầy đủ của struct này (bảng field, ánh xạ slot ↔ chân GPIO của cả 6 cảm biến, ngữ nghĩa `valid=0`): [`docs/architecture/DATA_SCHEMA.md` mục 3](architecture/DATA_SCHEMA.md#3-sensor_model--struct-nội-bộ-trên-waveshare-screen).
 
 ```c
 #include "sensor_model.h"
@@ -340,6 +340,11 @@ static const size_t SENSOR_COUNT = 4;
 ```
 
 `main.cpp` (`sensorTask`, `s_sensors[]`, `s_filters[]`) đọc trực tiếp `SENSOR_COUNT` nên không cần sửa thêm. Để cảm biến mới xuất hiện trên `waveshare-screen`, phải thêm 1 dòng tương ứng vào `SENSOR_ESPNOW_SLOT[SENSOR_COUNT]` trong [`include/EspNowConfig.h`](../firmware/sensor-node/include/EspNowConfig.h) — chọn slot ESP-NOW (`ESPNOW_SLOT_FRONT/REAR/LEFT_FRONT/LEFT_REAR/RIGHT_FRONT/RIGHT_REAR`) khớp vị trí lắp thật của cảm biến, đúng thứ tự với `SENSOR_PINS[]` (xem [`docs/architecture/ESPNOW_NETWORK.md`](architecture/ESPNOW_NETWORK.md)). Không cần sửa gì phía `waveshare-screen` — cả 6 slot đã được xử lý sẵn trong `on_data_recv()`.
+
+> ⚠️ **Hai cạm bẫy đã từng gây mất cả buổi debug** (chi tiết: [`docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md`](logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md)):
+>
+> 1. **Chân GPIO bị chiếm dụng nội bộ**: **không dùng GPIO 47/48** (Octal PSRAM diff-clock trên chip Embedded PSRAM 8MB), **26-32** (SPI0 flash/PSRAM), **19/20** (USB D-/D+). Echo trên các chân này luôn timeout dù cảm biến vẫn nháy đèn bình thường. `sensorTask` đã tự in cảnh báo lúc boot nếu cấu hình trúng — kiểm tra Serial Monitor sau mỗi lần đổi chân.
+> 2. **`SENSOR_PINS[]` và `SENSOR_ESPNOW_SLOT[]` lệch nhau**: hai mảng phải khớp **theo index**, không phải theo thứ tự slot. Lệch nhau **không gây lỗi build**, chỉ làm dữ liệu hiện sai nhãn cảm biến trên dashboard.
 
 ### 3.3 Tinh chỉnh bộ lọc khoảng cách (Cluster + EMA)
 

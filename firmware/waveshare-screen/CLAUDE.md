@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ESP32-S3 firmware for a Waveshare 7" RGB touch LCD (800x480) driving an LVGL "collision-avoidance" dashboard for a truck-mounted array of 6 ultrasonic sensors (JSN-SR04T). This board does not read sensors directly — it receives sensor distances directly over **ESP-NOW** (a local, direct Wi-Fi link, no AP/cloud in between), sent by the sibling project `firmware/sensor-node`, and evaluates hazard locally on-device. `front`/`left_front`/`right_front` currently have real hardware; the other 3 zones render in the UI but get no live data yet (they receive explicit `valid=0` and show as "no data", not stale values).
+ESP32-S3 firmware for a Waveshare 7" RGB touch LCD (800x480) driving an LVGL "collision-avoidance" dashboard for a truck-mounted array of 6 ultrasonic sensors (JSN-SR04T). This board does not read sensors directly — it receives sensor distances directly over **ESP-NOW** (a local, direct Wi-Fi link, no AP/cloud in between), sent by the sibling project `firmware/sensor-node`, and evaluates hazard locally on-device. All 6 zones now have real hardware wired on the sensor-node side, but any slot can still arrive as `valid=0` at runtime (lost echo, out of range, filter reset) — those render as "no data" (grey arc, "-- cm"), never as stale values or as "confirmed clear".
 
 The project previously used CoreIoT (ThingsBoard) MQTT for this link — that code (`components/coreiot_client/`, Rule-Chain in `cloud/coreiot/rule_chain/`) is still in the tree but **not called on this branch**; it's kept for a possible future MQTT restore. Don't assume MQTT is live when reading old logs/docs that predate the ESP-NOW switch.
 
@@ -51,6 +51,7 @@ ESP-NOW receive logic is not a separate component — it lives directly in `src/
 `app_main()` in `src/main.c` initializes the BSP, LVGL adapter, and dashboard on the main task. `WiFi.mode(WIFI_STA)`-equivalent setup pins a fixed channel (`ESPNOW_CHANNEL`, must match `sensor-node`) and registers `esp_now_register_recv_cb(on_data_recv)` — no AP connection, no MQTT task. A 1s `esp_timer` watchdog checks time-since-last-receive and flips the header badge to "NO LINK" after 1.5s of silence.
 
 **LVGL is not thread-safe.** Every `ui_dashboard_*` call must be wrapped in `esp_lv_adapter_lock()/esp_lv_adapter_unlock()`. Two lock timeout conventions matter:
+
 - The main/init task uses `esp_lv_adapter_lock(-1)` (infinite wait) since it owns startup sequencing.
 - The ESP-NOW receive callback (`on_data_recv` in `src/main.c`) runs outside the LVGL task, so it uses a bounded `esp_lv_adapter_lock(100)` (100ms) instead — an infinite wait there could deadlock the whole system if the LVGL task ever stalls.
 

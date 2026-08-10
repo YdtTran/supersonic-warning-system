@@ -406,6 +406,19 @@ void setup()
         1,
         &s_networkTaskHandle,
         0);
+
+    // Task buzzer - chạy trên core 0 cùng networkTask (chỉ toggle GPIO theo
+    // millis(), không có ràng buộc timing chặt như sensorTask). Trước đây
+    // buzzerTask được viết đầy đủ nhưng KHÔNG được tạo ở đây, nên còi cảnh
+    // báo chưa bao giờ thực sự kêu - xem docs/logs/SENSOR_NODE_GPIO47_48_PSRAM_LOG.md.
+    xTaskCreatePinnedToCore(
+        buzzerTask,
+        "BuzzerTask",
+        2048,
+        nullptr,
+        1,
+        &s_buzzerTaskHandle,
+        0);
 }
 
 void loop()

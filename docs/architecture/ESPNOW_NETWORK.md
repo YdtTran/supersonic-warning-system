@@ -29,12 +29,12 @@ Cả 2 bên phải cùng Wi-Fi channel: **1**.
 Payload nhị phân cố định độ dài (packed struct), mang đủ **6 vị trí cảm biến**
 theo đúng mô hình `sensor_model`/`ui_dashboard` bên waveshare-screen
 (`sensor_id_t` trong `firmware/waveshare-screen/components/sensor_model/include/sensor_model.h`),
-không chỉ 2 cảm biến vật lý hiện có trên sensor-node:
+— cả 6 slot đều đã có cảm biến vật lý trên sensor-node:
 
 ```c
 typedef struct __attribute__((packed)) {
     float   distance_cm[6];   // idx: 0=front,1=rear,2=left_front,3=left_rear,4=right_front,5=right_rear
-    uint8_t valid[6];         // 1 = giá trị hợp lệ, 0 = cảm biến lỗi/chưa lắp phần cứng
+    uint8_t valid[6];         // 1 = giá trị hợp lệ, 0 = cảm biến lỗi/mất tín hiệu ("null")
 } espnow_sensor_msg_t;
 ```
 
