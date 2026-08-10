@@ -50,7 +50,9 @@ typedef struct __attribute__((packed))
 // ESP-NOW tương ứng bên waveshare-screen. Cập nhật mảng này (và comment)
 // mỗi khi thêm/bớt cảm biến trong Config.h::SENSOR_PINS.
 static const uint8_t SENSOR_ESPNOW_SLOT[SENSOR_COUNT] = {
-    ESPNOW_SLOT_FRONT,       // Cảm biến FRONT (5,6)
-    ESPNOW_SLOT_LEFT_FRONT,  // Cảm biến LR (7,8)
-    ESPNOW_SLOT_RIGHT_FRONT, // Cảm biến RF (9,10)
-};
+    ESPNOW_SLOT_FRONT,       // Cam bien FRONT (5,6)
+    ESPNOW_SLOT_LEFT_FRONT,  // Cam bien LR (7,8)
+    ESPNOW_SLOT_RIGHT_FRONT, // Cam bien RF (9,10)
+    ESPNOW_SLOT_LEFT_REAR,   // L REAR (17,18)
+    ESPNOW_SLOT_RIGHT_REAR,  // R REAR (21,38)
+    ESPNOW_SLOT_REAR};       // REAR (47,48)

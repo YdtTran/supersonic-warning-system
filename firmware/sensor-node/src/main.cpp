@@ -54,6 +54,63 @@ static String distanceToText(bool valid, float cm)
 }
 
 // =========================================================
+// CẢNH BÁO GPIO ĐÃ BỊ CHIẾM DỤNG NỘI BỘ CHIP
+// Phát hiện tại runtime lúc S5 (REAR, GPIO47/48) không bao giờ nhận được
+// Echo dù cảm biến vẫn nháy đèn bình thường: ESP32-S3 bản Embedded PSRAM
+// (xác nhận bằng "esptool flash_id" -> "Embedded PSRAM 8MB") dùng GPIO47/48
+// làm SPICLK_P_DIFF/N_DIFF cho PSRAM - 2 chân này KHÔNG hoạt động như GPIO
+// thường bất kể code cấu hình gì. Bảng dưới đây liệt kê các chân đã biết là
+// không an toàn để đấu Trig/Echo trên board này, in cảnh báo ngay lúc boot
+// thay vì phải mất công debug lại bằng log REJECT như lần trước.
+// =========================================================
+
+struct ReservedPin
+{
+    uint8_t pin;
+    const char *reason;
+};
+
+static const ReservedPin RESERVED_PINS[] = {
+    {47, "Octal PSRAM SPICLK_P_DIFF (chip Embedded PSRAM 8MB) - khong dung duoc lam GPIO"},
+    {48, "Octal PSRAM SPICLK_N_DIFF (chip Embedded PSRAM 8MB) - khong dung duoc lam GPIO"},
+    {26, "SPI0 flash/PSRAM CS"},
+    {27, "SPI0 flash/PSRAM"},
+    {28, "SPI0 flash/PSRAM"},
+    {29, "SPI0 flash/PSRAM"},
+    {30, "SPI0 flash/PSRAM"},
+    {31, "SPI0 flash/PSRAM"},
+    {32, "SPI0 flash/PSRAM"},
+    {19, "USB D- (native USB CDC dang dung de Serial)"},
+    {20, "USB D+ (native USB CDC dang dung de Serial)"},
+};
+
+static const char *reservedPinReason(uint8_t pin)
+{
+    for (size_t i = 0; i < sizeof(RESERVED_PINS) / sizeof(RESERVED_PINS[0]); ++i)
+    {
+        if (RESERVED_PINS[i].pin == pin)
+        {
+            return RESERVED_PINS[i].reason;
+        }
+    }
+    return nullptr;
+}
+
+// In cảnh báo cho từng chân Trig/Echo trùng RESERVED_PINS - gọi 1 lần lúc
+// sensorTask khởi động, trước khi bắt đầu đo, để phát hiện sớm ngay từ log
+// boot thay vì phải chờ log REJECT chạy một lúc mới thấy Pulse luôn = 0.
+static void warnIfReservedPin(size_t sensorIndex, uint8_t pin, const char *role)
+{
+    const char *reason = reservedPinReason(pin);
+    if (reason != nullptr)
+    {
+        Serial.printf(
+            "  [S%u] CANH BAO: %s=GPIO%u da bi chiem dung noi bo (%s) - doi sang chan khac!\n",
+            (unsigned)sensorIndex, role, pin, reason);
+    }
+}
+
+// =========================================================
 // SENSOR TASK
 // Lần lượt trigger + đọc từng cảm biến trong mảng mỗi
 // MEASURE_INTERVAL_MS, mỗi cảm biến chạy qua bộ lọc riêng.
@@ -76,7 +133,10 @@ static void sensorTask(void *pvParameters)
     {
         Serial.printf("  [S%u] Trig=GPIO%u Echo=GPIO%u\n",
                       (unsigned)i, SENSOR_PINS[i].trigPin, SENSOR_PINS[i].echoPin);
+        warnIfReservedPin(i, SENSOR_PINS[i].trigPin, "Trig");
+        warnIfReservedPin(i, SENSOR_PINS[i].echoPin, "Echo");
     }
+    warnIfReservedPin(SENSOR_COUNT, BUZZER_PIN, "Buzzer");
     Serial.printf("Valid range: %.1f - %.1f cm\n", MIN_DISTANCE_CM, MAX_DISTANCE_CM);
     Serial.printf("Trigger pulse: %lu us\n", (unsigned long)TRIGGER_HIGH_US);
     Serial.printf("History: %d | Minimum cluster: %d\n", HISTORY_SIZE, MIN_CLUSTER_SIZE);
@@ -100,16 +160,16 @@ static void sensorTask(void *pvParameters)
 
                 // Serial log tắt để tăng hiệu năng (tránh chặn task đo mỗi
                 // chu kỳ). Bật lại khi cần debug.
-                // float stableCm;
-                // bool hasStable = s_filters[i].getStable(stableCm);
-                // Serial.printf(
-                //     "[S%u] REJECT: %s | Pulse: %lu us | Raw: %s | Stable: %s | Invalid: %d\n",
-                //     (unsigned)i,
-                //     reading.error,
-                //     (unsigned long)reading.durationUs,
-                //     distanceToText(reading.durationUs > 0, reading.distanceCm).c_str(),
-                //     distanceToText(hasStable, stableCm).c_str(),
-                //     s_invalidCount[i]);
+                float stableCm;
+                bool hasStable = s_filters[i].getStable(stableCm);
+                Serial.printf(
+                    "[S%u] REJECT: %s | Pulse: %lu us | Raw: %s | Stable: %s | Invalid: %d\n",
+                    (unsigned)i,
+                    reading.error,
+                    (unsigned long)reading.durationUs,
+                    distanceToText(reading.durationUs > 0, reading.distanceCm).c_str(),
+                    distanceToText(hasStable, stableCm).c_str(),
+                    s_invalidCount[i]);
 
                 if (s_invalidCount[i] >= RESET_AFTER_INVALID)
                 {

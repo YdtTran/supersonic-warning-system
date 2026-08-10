@@ -14,6 +14,7 @@
 #include "esp_flash.h"
 #include "esp_app_desc.h"
 #include "esp_timer.h"
+#include "driver/gpio.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -33,6 +34,13 @@ static const char *TAG = "ui_dashboard";
 // Fast-change threshold (cm) used by the crossing-traffic hazard heuristic.
 #define CROSSING_DELTA_CM 40
 #define CROSSING_FRONT_THRESHOLD_CM 150
+
+// Physical buzzer wired directly on the waveshare-screen board itself (separate from the
+// sensor-node's own local buzzer). GPIO2 was tried first and doesn't work here - it's already
+// claimed by the RGB LCD panel (EXAMPLE_LCD_IO_RGB_DATA12, see waveshare_rgb_lcd_port.h).
+// GPIO11 is unused by the LCD/touch/I2C pinout and free.
+#define BUZZER_GPIO_NUM GPIO_NUM_11
+#define BUZZER_TOGGLE_PERIOD_MS 1000
 
 typedef struct {
     lv_obj_t *arc;
@@ -73,6 +81,8 @@ static lv_obj_t *s_lbl_sys_min_heap;
 static lv_obj_t *s_lbl_sys_uptime;
 static lv_timer_t *s_sys_info_timer;
 static bool s_alarm_muted = false;
+static lv_obj_t *s_mute_btn;
+static lv_obj_t *s_mute_btn_lbl;
 
 static sensor_arc_t s_arcs[SENSOR_MODEL_COUNT];
 static sensor_row_t s_rows[SENSOR_MODEL_COUNT];
@@ -209,15 +219,35 @@ static void build_header(lv_obj_t *parent)
     lv_obj_align(s_lbl_mqtt_status, LV_ALIGN_RIGHT_MID, 0, 0);
 }
 
+// Forward declaration: evaluate_hazard() (defined further down) must re-run whenever mute
+// toggles, since the OVERALL banner text depends on s_alarm_muted (see evaluate_hazard()).
+static void evaluate_hazard(void);
+
+// Reflects s_alarm_muted on the button itself - otherwise "Mute Alarm" always reads the same
+// regardless of state and there is no way to tell from the dashboard whether the alarm is
+// currently silenced or live.
+static void update_mute_button_visual(void)
+{
+    if (s_mute_btn_lbl) {
+        lv_label_set_text(s_mute_btn_lbl, s_alarm_muted ? "Unmute Alarm" : "Mute Alarm");
+    }
+    if (s_mute_btn) {
+        lv_obj_set_style_bg_color(s_mute_btn, lv_color_hex(s_alarm_muted ? COLOR_DANGER : COLOR_PANEL), 0);
+    }
+}
+
 static void mute_btn_cb(lv_event_t *e)
 {
     (void)e;
     s_alarm_muted = !s_alarm_muted;
+    update_mute_button_visual();
+
     sensor_reading_t readings[SENSOR_MODEL_COUNT];
     sensor_model_get_all(readings);
     for (int i = 0; i < SENSOR_MODEL_COUNT; i++) {
         arc_set_zone(&s_arcs[i], sensor_model_classify(readings[i].distance_cm));
     }
+    evaluate_hazard();
 }
 
 static lv_obj_t *build_left_sidebar(lv_obj_t *parent)
@@ -248,12 +278,12 @@ static lv_obj_t *build_left_sidebar(lv_obj_t *parent)
     lv_obj_set_style_text_color(action_hdr, lv_color_hex(COLOR_ACCENT), 0);
     lv_obj_set_style_pad_top(action_hdr, 12, 0);
 
-    lv_obj_t *mute_btn = lv_btn_create(sidebar);
-    lv_obj_set_size(mute_btn, LV_PCT(100), 32);
-    lv_obj_add_event_cb(mute_btn, mute_btn_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *mute_lbl = lv_label_create(mute_btn);
-    lv_label_set_text(mute_lbl, "Mute Alarm");
-    lv_obj_center(mute_lbl);
+    s_mute_btn = lv_btn_create(sidebar);
+    lv_obj_set_size(s_mute_btn, LV_PCT(100), 32);
+    lv_obj_add_event_cb(s_mute_btn, mute_btn_cb, LV_EVENT_CLICKED, NULL);
+    s_mute_btn_lbl = lv_label_create(s_mute_btn);
+    lv_obj_center(s_mute_btn_lbl);
+    update_mute_button_visual();
 
     lv_obj_t *calib_btn = lv_btn_create(sidebar);
     lv_obj_set_size(calib_btn, LV_PCT(100), 32);
@@ -634,7 +664,13 @@ static void evaluate_hazard(void)
         const char *text = worst == SENSOR_ZONE_DANGER ? "OVERALL: DANGER"
                           : worst == SENSOR_ZONE_CAUTION ? "OVERALL: CAUTION"
                           : "OVERALL: SAFE";
-        lv_label_set_text(s_lbl_hazard_overall, text);
+        // Alarm state only silences the blink/animation on DANGER zones (see mute_btn_cb) -
+        // the banner itself must still say so, otherwise a muted DANGER looks identical to SAFE.
+        if (worst == SENSOR_ZONE_DANGER && s_alarm_muted) {
+            lv_label_set_text(s_lbl_hazard_overall, "OVERALL: DANGER (MUTED)");
+        } else {
+            lv_label_set_text(s_lbl_hazard_overall, text);
+        }
         lv_obj_set_style_text_color(s_lbl_hazard_overall, zone_color(worst), 0);
     }
 

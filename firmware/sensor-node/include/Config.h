@@ -15,15 +15,19 @@ struct SensorPinConfig
 };
 
 static const SensorPinConfig SENSOR_PINS[] = {
-    {5, 6}, // Cảm biến FRONT
-    {7, 8}, // Cảm biến LR
-    {9, 10} // Cảm biến RF
-    // L REAR
-    // R REAR
-    // REAR
+    {5, 6},   // Cảm biến FRONT
+    {7, 8},   // Cảm biến LR
+    {9, 10},  // Cảm biến RF
+    {17, 18}, // L REAR
+    {21, 38}, // R REAR
+    {3, 4}    // REAR - KHÔNG dùng 47/48: chip này có Embedded PSRAM 8MB
+              // (xác nhận qua "esptool flash_id"), GPIO47/48 bị chip
+              // chiếm làm SPICLK_P_DIFF/N_DIFF cho PSRAM nên không hoạt
+              // động như GPIO thường - Echo luôn timeout dù cảm biến vẫn
+              // nháy đèn tín hiệu bình thường.
 };
 
-static const size_t SENSOR_COUNT = 3;
+static const size_t SENSOR_COUNT = 6;
 
 // =========================================================
 // CẤU HÌNH CẢM BIẾN JSN-SR04T
@@ -94,7 +98,7 @@ static const int RESET_AFTER_INVALID = 15;
 // để đồng bộ, xem cloud/coreiot/rule_chain/supersonic_rule_chain.json).
 // =========================================================
 
-static const uint8_t BUZZER_PIN = 48;
+static const uint8_t BUZZER_PIN = 11;
 
 // <= ngưỡng này: WARNING (cùng điều kiện relay ON phía server)
 static const float BUZZER_WARNING_DISTANCE_CM = 50.0f;
